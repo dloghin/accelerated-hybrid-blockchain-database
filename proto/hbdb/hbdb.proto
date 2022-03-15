@@ -6,7 +6,9 @@ option go_package = "proto/hbdb";
 service Node {
     rpc Get (GetRequest) returns (GetResponse);
     rpc Set (SetRequest) returns (SetResponse);
-    rpc Verify (VerifyRequest) returns (VerifyResponse);    
+    rpc Verify (VerifyRequest) returns (VerifyResponse);
+    rpc BatchGet (BatchGetRequest) returns (BatchGetResponse);
+    rpc BatchSet (BatchSetRequest) returns (BatchSetResponse);
 }
 
 message VerifyRequest {
@@ -55,6 +57,14 @@ message GetResponse {
     int64 version = 4;
 }
 
+message BatchGetRequest {    
+    repeated GetRequest requests = 1;
+}
+
+message BatchGetResponse {
+    repeated GetResponse responses = 1;
+}
+
 message SetRequest {
     string pubkey = 1;
     string signature = 2;
@@ -68,4 +78,12 @@ message SetResponse {
     string pubkey = 1;
     string signature = 2;
     string txid = 3;
+}
+
+message BatchSetRequest {    
+    repeated SetRequest requests = 1;
+}
+
+message BatchSetResponse {
+    repeated SetResponse responses = 1;
 }

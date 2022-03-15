@@ -274,3 +274,21 @@ func (s *server) Verify(ctx context.Context, req *pbv.VerifyRequest) (*pbv.Verif
 		NonMembershipLeafData: proof.NonMembershipLeafData,
 	}, nil
 }
+
+func (s *server) BatchGet(ctx context.Context, requests *pbv.BatchGetRequest) (*pbv.BatchGetResponse, error) {
+	responses := make([]*pbv.GetResponse, len(requests.GetRequests()))
+	for idx, req := range requests.GetRequests() {
+		res, _ := s.Get(ctx, req)
+		responses[idx] = res
+	}
+	return &pbv.BatchGetResponse{Responses: responses}, nil
+}
+
+func (s *server) BatchSet(ctx context.Context, requests *pbv.BatchSetRequest) (*pbv.BatchSetResponse, error) {
+	responses := make([]*pbv.SetResponse, len(requests.GetRequests()))
+	for idx, req := range requests.GetRequests() {
+		res, _ := s.Set(ctx, req)
+		responses[idx] = res
+	}
+	return &pbv.BatchSetResponse{Responses: responses}, nil
+}
