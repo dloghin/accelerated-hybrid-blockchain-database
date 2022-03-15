@@ -1,0 +1,71 @@
+syntax = "proto3";
+package controller;
+
+option go_package = "proto/hbdb";
+
+service Node {
+    rpc Get (GetRequest) returns (GetResponse);
+    rpc Set (SetRequest) returns (SetResponse);
+    rpc Verify (VerifyRequest) returns (VerifyResponse);    
+}
+
+message VerifyRequest {
+    string pubkey = 1;
+    string signature = 2;    
+    string key = 3;
+}
+
+message VerifyResponse {
+    string pubkey = 1;
+    string signature = 2;
+    string value = 3;
+    int64 version = 4;
+    bytes root_digest = 5;
+    repeated bytes side_nodes = 6;
+    bytes non_membership_leaf_data = 7;
+}
+
+enum MessageType {
+    Approve = 0;
+    Abort = 1;
+}
+
+message SharedLog {
+    int64 seq = 1;
+    repeated SetRequest sets = 2;
+}
+
+message Block {    
+    repeated SharedLog txs = 1;
+    MessageType type = 2;
+    string signature = 3;
+    string blkId = 4;
+}
+
+message GetRequest {
+    string pubkey = 1;
+    string signature = 2;
+    string key = 3;    
+}
+
+message GetResponse {
+    string pubkey = 1;
+    string signature = 2;
+    string value = 3;
+    int64 version = 4;
+}
+
+message SetRequest {
+    string pubkey = 1;
+    string signature = 2;
+    string key = 3;
+    string value = 4;
+    int64 version = 5;
+    string txId = 6;
+}
+
+message SetResponse {
+    string pubkey = 1;
+    string signature = 2;
+    string txid = 3;
+}
