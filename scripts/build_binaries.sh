@@ -12,3 +12,4 @@ go build -o preprocess ../cmd/preprocess/main.go
 go build -o crypto ../cmd/crypto/main.go
 go build -o hbdb-server ../cmd/hbdb/main.go
 go build -o hbdb-bench ../src/benchmark/ycsbbench/main.go
+go build -o hbdb-batch-bench ../src/benchmark/ycsbbenchbatch/main.go

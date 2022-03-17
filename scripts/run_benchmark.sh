@@ -19,12 +19,13 @@ for IDX in `seq 3 $N`; do
 	ADDRS="$ADDRS,$IPPREFIX.$IDX:1990"
 done
 
-#DRIVERS=4
-#THREADS="64"
+DRIVERS=4
+THREADS="64"
 for TH in $THREADS; do
     ./restart_cluster.sh
     ./start_hbdb.sh    
-    ../bin/hbdb-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS --key-file-prefix=client 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
+    #../bin/hbdb-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS --key-file-prefix=client 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
+    ../bin/hbdb-batch-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS --key-file-prefix=client 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
     # copy logs
     SLOGS="$LOGS/hbdb-clients-$TH-logs"
     mkdir -p $SLOGS

@@ -28,6 +28,13 @@ type Request struct {
 	Version int64
 }
 
+type BatchRequest struct {
+	ReqType  RequestType
+	Keys     []string
+	Vals     []string
+	Versions []int64
+}
+
 func LineByLine(r io.Reader, fn func(line string) error) error {
 	br := bufio.NewReader(r)
 	// num := 0

@@ -7,12 +7,8 @@ import (
 	"log"
 	"time"
 
-	"encoding/hex"
-
 	"go.uber.org/atomic"
 
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/go-redis/redis/v8"
 	"github.com/golang/protobuf/proto"
 	"gopkg.in/confluentinc/confluent-kafka-go.v1/kafka"
@@ -164,31 +160,13 @@ func (s *server) batchLoop() {
 
 func (s *server) Get(ctx context.Context, req *pbv.GetRequest) (*pbv.GetResponse, error) {
 	// check signature
-	/*
-		if len(req.GetPubkey()) == 0 {
-			fmt.Printf("Public key: %v\n", req.GetPubkey())
-			fmt.Printf("Signature: %v\n", req.GetSignature())
-			fmt.Printf("Key: %v\n", req.GetKey())
-			return nil, errors.New("Invalid key")
-		}
-	*/
-	pubkey, err := hex.DecodeString(req.GetPubkey())
+	err := VerifySignature(req.GetPubkey(), req.GetSignature(), req.GetKey())
 	if err != nil {
-		fmt.Printf("Error in decode hex %v\n", err)
-		return nil, err
-	}
-	signature, err := hex.DecodeString(req.GetSignature())
-	if err != nil {
-		fmt.Printf("Error in decode hex %v\n", err)
-		return nil, err
-	}
-	dig := crypto.Keccak256([]byte(req.GetKey()))
-	if len(dig) != 32 {
-		fmt.Println("Error len digest != 32")
-		return nil, nil
-	}
-	if !secp256k1.VerifySignature(pubkey, dig, signature[:64]) {
-		fmt.Println("Error in VerifySignature Get")
+		fmt.Println()
+		fmt.Printf("Error in VerifySignature Get %v\n", req.GetKey())
+		fmt.Printf("Public key: %v\n", req.GetPubkey())
+		fmt.Printf("Signature: %v\n", req.GetSignature())
+		fmt.Printf("Key: %v\n", req.GetKey())
 		return nil, errors.New("Invalid Signature")
 	}
 
@@ -207,19 +185,9 @@ func (s *server) Get(ctx context.Context, req *pbv.GetRequest) (*pbv.GetResponse
 
 func (s *server) Set(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResponse, error) {
 	// check signature
-	pubkey, err := hex.DecodeString(req.GetPubkey())
+	payload := fmt.Sprintf("%s%s%d", req.GetKey(), req.GetValue(), req.GetVersion())
+	err := VerifySignature(req.GetPubkey(), req.GetSignature(), payload)
 	if err != nil {
-		fmt.Printf("Error in decode hex %v\n", err)
-		return nil, err
-	}
-	signature, err := hex.DecodeString(req.GetSignature())
-	if err != nil {
-		fmt.Printf("Error in decode hex %v\n", err)
-		return nil, err
-	}
-	data := fmt.Sprintf("%s%s%d", req.GetKey(), req.GetValue(), req.GetVersion())
-	dig := crypto.Keccak256([]byte(data))
-	if !secp256k1.VerifySignature(pubkey, dig, signature[:64]) {
 		fmt.Println("Error in VerifySignature Set")
 		return nil, errors.New("Invalid Signature")
 	}

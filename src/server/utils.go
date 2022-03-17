@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/crypto"
 	"io"
 	"os"
+
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 )
 
 // https://github.com/ethereum/go-ethereum/blob/master/crypto/crypto.go
@@ -68,4 +70,36 @@ func LoadECDSAPub(file string) (*ecdsa.PublicKey, error) {
 		return nil, err
 	}
 	return crypto.UnmarshalPubkey(decoded)
+}
+
+func VerifySignature(publicKeyStr, signatureStr, payload string) error {
+	publicKey, err := hex.DecodeString(publicKeyStr)
+	if err != nil {
+		fmt.Printf("Error in decode hex %v\n", err)
+		return err
+	}
+	signature, err := hex.DecodeString(signatureStr)
+	if err != nil {
+		fmt.Printf("Error in decode hex %v\n", err)
+		return err
+	}
+	/*
+		// for debugging only
+		if len(signature) != 64 {
+			fmt.Println("Error len signature != 64")
+			return errors.New("Invalid Signature")
+		}
+	*/
+	digest := crypto.Keccak256([]byte(payload))
+	/*
+		// for debugging only
+		if len(digest) != 32 {
+			fmt.Println("Error len digest != 32")
+			return errors.New("Invalid Digest")
+		}
+	*/
+	if !secp256k1.VerifySignature(publicKey, digest, signature) {
+		return errors.New("Invalid Signature")
+	}
+	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc"
 
 	pbv "hbdb/proto/hbdb"
+	"hbdb/src/server"
 )
 
 type Driver struct {
@@ -32,9 +33,9 @@ func DecodeKeyPair(key *ecdsa.PrivateKey) (pubkey, privkey []byte) {
 	blob := key.D.Bytes()
 	copy(privkey[32-len(blob):], blob)
 
-	fmt.Println("***")
-	fmt.Printf("Public: %v\n", pubkey)
-	fmt.Printf("Private: %v\n", privkey)
+	//fmt.Println("***")
+	//fmt.Printf("Public: %v\n", pubkey)
+	//fmt.Printf("Private: %v\n", privkey)
 
 	return pubkey, privkey
 }
@@ -76,36 +77,13 @@ func (d *Driver) Get(ctx context.Context, key string) (string, int64, error) {
 	dig := crypto.Keccak256([]byte(key))
 	signature, err := secp256k1.Sign(dig, d.privkey)
 	if err != nil {
-		fmt.Printf("Error in Driver signature Get %v\n", err)
+		fmt.Printf("[Driver] Error in Sign for Get: %v\n", err)
 		return "", -1, err
 	}
 
-	/*
-		TODO - remove
-		pubkey, err := hex.DecodeString(hex.EncodeToString(d.pubkey))
-		if err != nil {
-			fmt.Printf("Error in decode hex %v\n", err)
-			return "", -1, err
-		}
-		sig, err := hex.DecodeString(hex.EncodeToString(signature))
-		if err != nil {
-			fmt.Printf("Error in decode hex %v\n", err)
-			return "", -1, err
-		}
-
-		pubkeystr := hex.EncodeToString(d.pubkey)
-		if len(pubkeystr) == 0 {
-			fmt.Println("Empty public key")
-		}
-
-		if !secp256k1.VerifySignature(pubkey, dig, sig[:64]) {
-			fmt.Println("Verify False Get")
-		}
-	*/
-
 	res, err := d.dbCli.Get(ctx, &pbv.GetRequest{
 		Pubkey:    d.pubkeystr,
-		Signature: hex.EncodeToString(signature),
+		Signature: hex.EncodeToString(signature[:64]),
 		Key:       key,
 	})
 	if err != nil {
@@ -119,18 +97,81 @@ func (d *Driver) Set(ctx context.Context, key, value string, version int64) erro
 	dig := crypto.Keccak256([]byte(data))
 	signature, err := secp256k1.Sign(dig, d.privkey)
 	if err != nil {
-		fmt.Printf("Error in Driver signature Set %v\n", err)
+		fmt.Printf("[Driver] Error in Driver Sign for Set: %v\n", err)
 		return err
 	}
 	if _, err := d.dbCli.Set(ctx, &pbv.SetRequest{
 		Pubkey:    d.pubkeystr,
-		Signature: hex.EncodeToString(signature),
+		Signature: hex.EncodeToString(signature[:64]),
 		Key:       key,
 		Value:     value,
 		Version:   version,
 	}); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (d *Driver) BatchGet(ctx context.Context, size int, keys []string) ([]string, []int64, error) {
+	requests := make([]*pbv.GetRequest, size)
+	for idx := 0; idx < size; idx++ {
+		dig := crypto.Keccak256([]byte(keys[idx]))
+		signature, err := secp256k1.Sign(dig, d.privkey)
+		if err != nil {
+			fmt.Printf("[Driver] Error in Sign for BatchGet: %v\n", err)
+			return nil, nil, err
+		}
+		requests[idx] = &pbv.GetRequest{
+			Pubkey:    d.pubkeystr,
+			Signature: hex.EncodeToString(signature[:64]),
+			Key:       keys[idx],
+		}
+		err = server.VerifySignature(requests[idx].GetPubkey(), requests[idx].GetSignature(), requests[idx].GetKey())
+		if err != nil {
+			fmt.Printf("[Driver] Error in VerifySignature for BatchGet: key %v\n", requests[idx].GetKey())
+		}
+	}
+
+	res, err := d.dbCli.BatchGet(ctx, &pbv.BatchGetRequest{
+		Requests: requests,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	vals := make([]string, size)
+	vers := make([]int64, size)
+	for idx := 0; idx < size; idx++ {
+		vals[idx] = res.GetResponses()[idx].Value
+		vers[idx] = res.GetResponses()[idx].Version
+	}
+	return vals, vers, nil
+}
+
+func (d *Driver) BatchSet(ctx context.Context, size int, keys, values []string, versions []int64) error {
+	requests := make([]*pbv.SetRequest, size)
+	for idx := 0; idx < size; idx++ {
+		data := fmt.Sprintf("%s%s%d", keys[idx], values[idx], versions[idx])
+		dig := crypto.Keccak256([]byte(data))
+		signature, err := secp256k1.Sign(dig, d.privkey)
+		if err != nil {
+			fmt.Printf("[Driver] Error in Sign for BatchSet: %v\n", err)
+			return err
+		}
+		requests[idx] = &pbv.SetRequest{
+			Pubkey:    d.pubkeystr,
+			Signature: hex.EncodeToString(signature[:64]),
+			Key:       keys[idx],
+			Value:     values[idx],
+			Version:   versions[idx],
+		}
+	}
+
+	if _, err := d.dbCli.BatchSet(ctx, &pbv.BatchSetRequest{
+		Requests: requests,
+	}); err != nil {
+		return err
+	}
+
 	return nil
 }
 
