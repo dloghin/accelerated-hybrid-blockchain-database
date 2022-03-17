@@ -32,16 +32,11 @@ enum MessageType {
     Abort = 1;
 }
 
-message SharedLog {
-    int64 seq = 1;
-    repeated SetRequest sets = 2;
-}
-
-message Block {    
-    repeated SharedLog txs = 1;
-    MessageType type = 2;
-    string signature = 3;
-    string blkId = 4;
+message Block {
+    string blkId = 1;
+    string hash = 2;
+    int64 size = 3;
+    repeated SetRequest txs = 4;
 }
 
 message GetRequest {

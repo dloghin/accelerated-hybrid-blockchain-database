@@ -129,6 +129,8 @@ func main() {
 		Versions: make([]int64, *batchSize),
 	}
 	setReqIdx := 0
+	var lastSetKey string
+	var lastSetVer int64
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -158,6 +160,8 @@ func main() {
 				}
 			}
 			if setReqIdx == *batchSize {
+				lastSetKey = setReq.Keys[setReqIdx-1]
+				lastSetVer = setReq.Versions[setReqIdx-1]
 				runBuf <- setReq
 				reqNum.Add(int64(*batchSize))
 				setReqIdx = 0
@@ -201,9 +205,21 @@ func main() {
 	wg.Wait()
 	close(latencyCh)
 	wg2.Wait()
+	fmt.Println("Wait for last Set to take effect ...")
+	for {
+		_, ver, err := clis[0].Get(context.Background(), lastSetKey)
+		if err != nil {
+			fmt.Printf("Error in Get: %v\n", err)
+		} else {
+			if ver == lastSetVer+1 {
+				break
+			}
+		}
+	}
+	delta := time.Since(start).Seconds()
 	fmt.Printf("Throughput of %v drivers with %v concurrency to handle %v requests: %v req/s\n",
 		*driverNum, *driverConcurrency, reqNum,
-		int64(float64(reqNum.Load())/time.Since(start).Seconds()),
+		int64(float64(reqNum.Load())/delta),
 	)
 	fmt.Printf("Average latency: %v ms\n", avaLatency)
 	fmt.Printf("Batch size: %d\n", *batchSize)
