@@ -172,17 +172,6 @@ func (s *server) getLocalData(ctx context.Context, key string) (*pbv.GetResponse
 }
 
 func (s *server) Get(ctx context.Context, req *pbv.GetRequest) (*pbv.GetResponse, error) {
-	// check signature
-	err := VerifySignature(req.GetPubkey(), req.GetSignature(), req.GetKey())
-	if err != nil {
-		fmt.Println()
-		fmt.Printf("Error in VerifySignature Get %v\n", req.GetKey())
-		fmt.Printf("Public key: %v\n", req.GetPubkey())
-		fmt.Printf("Signature: %v\n", req.GetSignature())
-		fmt.Printf("Key: %v\n", req.GetKey())
-		return nil, errors.New("Invalid Signature")
-	}
-
 	// fetch data
 	return s.getLocalData(ctx, req.GetKey())
 }
@@ -216,14 +205,6 @@ func (s *server) prepareSetRequest(req *pbv.SetRequest) *pbv.SetRequest {
 }
 
 func (s *server) SetSync(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResponse, error) {
-	// check signature
-	payload := fmt.Sprintf("%s%s%d", req.GetKey(), req.GetValue(), req.GetVersion())
-	err := VerifySignature(req.GetPubkey(), req.GetSignature(), payload)
-	if err != nil {
-		fmt.Println("Error in VerifySignature Set")
-		return nil, errors.New("Invalid Signature")
-	}
-
 	// check version
 	if !s.checkMVCC(ctx, req.GetKey(), req.GetVersion()) {
 		return nil, errors.New("Invalid Request Version")
@@ -249,14 +230,6 @@ func (s *server) SetSync(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResp
 }
 
 func (s *server) Set(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResponse, error) {
-	// check signature
-	payload := fmt.Sprintf("%s%s%d", req.GetKey(), req.GetValue(), req.GetVersion())
-	err := VerifySignature(req.GetPubkey(), req.GetSignature(), payload)
-	if err != nil {
-		fmt.Println("Error in VerifySignature Set")
-		return nil, errors.New("Invalid Signature")
-	}
-
 	// check version
 	if !s.checkMVCC(ctx, req.GetKey(), req.GetVersion()) {
 		return nil, errors.New("Invalid Request Version")
@@ -290,12 +263,6 @@ func (s *server) BatchGet(ctx context.Context, requests *pbv.BatchGetRequest) (*
 			wg.Add(1)
 			go func(idx int, req *pbv.GetRequest) {
 				defer wg.Done()
-
-				err := VerifySignature(req.GetPubkey(), req.GetSignature(), req.GetKey())
-				if err != nil {
-					responses[idx] = nil
-					return
-				}
 				responses[idx], _ = s.getLocalData(ctx, req.GetKey())
 			}(i, r)
 		}
@@ -319,20 +286,11 @@ func (s *server) BatchSet(ctx context.Context, requests *pbv.BatchSetRequest) (*
 			wg.Add(1)
 			go func(idx int, req *pbv.SetRequest) {
 				defer wg.Done()
-
-				// verify signature
-				payload := fmt.Sprintf("%s%s%d", req.GetKey(), req.GetValue(), req.GetVersion())
-				err := VerifySignature(req.GetPubkey(), req.GetSignature(), payload)
-				if err != nil {
-					responses[idx] = nil
-					return
-				}
 				// verify MVCC
 				if !s.checkMVCC(ctx, req.GetKey(), req.GetVersion()) {
 					responses[idx] = nil
 					return
 				}
-
 				// prepare request
 				req = s.prepareSetRequest(req)
 				s.setRequestCh <- req

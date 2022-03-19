@@ -25,9 +25,9 @@ for TH in $THREADS; do
     ./restart_cluster.sh
     ./start_hbdb.sh
     # Run with simple (sigle) requests
-    #../bin/hbdb-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS --key-file-prefix=client 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
+    #../bin/hbdb-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
     # Run with batch requests
-    ../bin/hbdb-batch-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS --key-file-prefix=client 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
+    ../bin/hbdb-batch-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
     # copy logs
     SLOGS="$LOGS/hbdb-clients-$TH-logs"
     mkdir -p $SLOGS

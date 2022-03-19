@@ -9,15 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
-
 	"go.uber.org/atomic"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"hbdb/src/benchmark"
 	"hbdb/src/driver"
-	"hbdb/src/server"
 )
 
 var (
@@ -26,23 +23,10 @@ var (
 	driverNum         = kingpin.Flag("ndrivers", "Number of drivers for sending requests").Default("4").Int()
 	driverConcurrency = kingpin.Flag("nthreads", "Number of threads for each driver").Default("10").Int()
 	serverAddrs       = kingpin.Flag("server-addrs", "Address of HBDB server nodes").Required().String()
-	keyFilePrefix     = kingpin.Flag("key-file-prefix", "ECDSA key file prefix").Required().String()
 )
 
 func main() {
 	kingpin.Parse()
-
-	// load private key
-	pvk, err := crypto.LoadECDSA(*keyFilePrefix + ".pvk")
-	if err != nil {
-		panic(err)
-	}
-
-	pub, err := server.LoadECDSAPub(*keyFilePrefix + ".pub")
-	if err != nil {
-		panic(err)
-	}
-	pvk.PublicKey = *pub
 
 	addrs := strings.Split(*serverAddrs, ",")
 	clis := make([]*driver.Driver, 0)
@@ -52,7 +36,7 @@ func main() {
 		}
 	}()
 	for i := 0; i < *driverNum; i++ {
-		cli, err := driver.Open(addrs[i%len(addrs)], pvk)
+		cli, err := driver.Open(addrs[i%len(addrs)])
 		if err != nil {
 			panic(err)
 		}
