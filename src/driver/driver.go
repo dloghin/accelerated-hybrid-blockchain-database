@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
 	"fmt"
 
 	"encoding/hex"
@@ -14,7 +13,6 @@ import (
 	"google.golang.org/grpc"
 
 	pbv "hbdb/proto/hbdb"
-	"hbdb/src/server"
 )
 
 type Driver struct {
@@ -36,21 +34,6 @@ func DecodeKeyPair(key *ecdsa.PrivateKey) (pubkey, privkey []byte) {
 	//fmt.Println("***")
 	//fmt.Printf("Public: %v\n", pubkey)
 	//fmt.Printf("Private: %v\n", privkey)
-
-	return pubkey, privkey
-}
-
-// taken from https://github.com/ethereum/go-ethereum/blob/master/crypto/secp256k1/secp256_test.go
-func generateKeyPair() (pubkey, privkey []byte) {
-	key, err := ecdsa.GenerateKey(secp256k1.S256(), rand.Reader)
-	if err != nil {
-		panic(err)
-	}
-	pubkey = elliptic.Marshal(secp256k1.S256(), key.X, key.Y)
-
-	privkey = make([]byte, 32)
-	blob := key.D.Bytes()
-	copy(privkey[32-len(blob):], blob)
 
 	return pubkey, privkey
 }
@@ -125,10 +108,6 @@ func (d *Driver) BatchGet(ctx context.Context, size int, keys []string) ([]strin
 			Pubkey:    d.pubkeystr,
 			Signature: hex.EncodeToString(signature[:64]),
 			Key:       keys[idx],
-		}
-		err = server.VerifySignature(requests[idx].GetPubkey(), requests[idx].GetSignature(), requests[idx].GetKey())
-		if err != nil {
-			fmt.Printf("[Driver] Error in VerifySignature for BatchGet: key %v\n", requests[idx].GetKey())
 		}
 	}
 
