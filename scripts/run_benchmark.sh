@@ -19,12 +19,14 @@ for IDX in `seq 3 $N`; do
 	ADDRS="$ADDRS,$IPPREFIX.$IDX:1990"
 done
 
-DRIVERS=4
-THREADS="64"
+#DRIVERS=4
+#THREADS="64"
 for TH in $THREADS; do
     ./restart_cluster.sh
-    ./start_hbdb.sh    
+    ./start_hbdb.sh
+    # Run with simple (sigle) requests
     #../bin/hbdb-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS --key-file-prefix=client 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
+    # Run with batch requests
     ../bin/hbdb-batch-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS --key-file-prefix=client 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
     # copy logs
     SLOGS="$LOGS/hbdb-clients-$TH-logs"
@@ -36,4 +38,3 @@ for TH in $THREADS; do
     scp -o StrictHostKeyChecking=no root@$IPPREFIX.6:/kafka_2.12-2.7.0/zookeeper.log $SLOGS/
     scp -o StrictHostKeyChecking=no root@$IPPREFIX.6:/kafka_2.12-2.7.0/kafka.log $SLOGS/
 done
-

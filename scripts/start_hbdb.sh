@@ -41,5 +41,8 @@ done
 for I in `seq 1 $(($N-1))`; do
 	ADDR=$IPPREFIX".$(($I+1))"
 	ssh -o StrictHostKeyChecking=no root@$ADDR "cd /; redis-server > redis.log 2>&1 &"
-	ssh -o StrictHostKeyChecking=no root@$ADDR "cd /; nohup /bin/hbdb-server --signature=node$I --parties=${NODES} --blk-size=$BLKSIZE --addr=:1990 --kafka-addr=$KAFKA_ADDR:9092 --kafka-group=$I --kafka-topic=shared-log --redis-addr=0.0.0.0:6379 --redis-db=0 --ledger-path=ledger$I > hbdb-server-$I.log 2>&1 &"
+        # Run batch requests sequentially:        
+	# ssh -o StrictHostKeyChecking=no root@$ADDR "cd /; nohup /bin/hbdb-server --signature=node$I --parties=${NODES} --blk-size=$BLKSIZE --addr=:1990 --kafka-addr=$KAFKA_ADDR:9092 --kafka-group=$I --kafka-topic=shared-log --redis-addr=0.0.0.0:6379 --redis-db=0 --ledger-path=ledger$I > hbdb-server-$I.log 2>&1 &"
+        # Run batch requests in parallel:
+        ssh -o StrictHostKeyChecking=no root@$ADDR "cd /; nohup /bin/hbdb-server --parallel-batch-processing --signature=node$I --parties=${NODES} --blk-size=$BLKSIZE --addr=:1990 --kafka-addr=$KAFKA_ADDR:9092 --kafka-group=$I --kafka-topic=shared-log --redis-addr=0.0.0.0:6379 --redis-db=0 --ledger-path=ledger$I > hbdb-server-$I.log 2>&1 &"
 done

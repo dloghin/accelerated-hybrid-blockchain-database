@@ -58,6 +58,9 @@ func NewServer(redisCli *redis.Client, consumer *kafka.Consumer, producer *kafka
 	if err := s.puller.Subscribe(config.Topic, nil); err != nil {
 		log.Fatalf("Subscribe topic %v failed: %v", config.Topic, err)
 	}
+	if s.config.ParallelBatchProcessing {
+		fmt.Println("Parallel batch request processing.")
+	}
 	go s.applyLoop()
 	go s.batchLoop()
 	return s
@@ -281,14 +284,7 @@ func (s *server) Verify(ctx context.Context, req *pbv.VerifyRequest) (*pbv.Verif
 func (s *server) BatchGet(ctx context.Context, requests *pbv.BatchGetRequest) (*pbv.BatchGetResponse, error) {
 	responses := make([]*pbv.GetResponse, len(requests.GetRequests()))
 
-	// un-optimized
-	for idx, req := range requests.GetRequests() {
-		res, _ := s.Get(ctx, req)
-		responses[idx] = res
-	}
-
-	/*
-		// optimized
+	if s.config.ParallelBatchProcessing {
 		wg := &sync.WaitGroup{}
 		for i, r := range requests.GetRequests() {
 			wg.Add(1)
@@ -304,20 +300,20 @@ func (s *server) BatchGet(ctx context.Context, requests *pbv.BatchGetRequest) (*
 			}(i, r)
 		}
 		wg.Wait()
-	*/
+	} else {
+		for idx, req := range requests.GetRequests() {
+			res, _ := s.Get(ctx, req)
+			responses[idx] = res
+		}
+	}
+
 	return &pbv.BatchGetResponse{Responses: responses}, nil
 }
 
 func (s *server) BatchSet(ctx context.Context, requests *pbv.BatchSetRequest) (*pbv.BatchSetResponse, error) {
 	responses := make([]*pbv.SetResponse, len(requests.GetRequests()))
 
-	// un-optimized
-	for idx, req := range requests.GetRequests() {
-		res, _ := s.Set(ctx, req)
-		responses[idx] = res
-	}
-	/*
-		// optimized
+	if s.config.ParallelBatchProcessing {
 		wg := &sync.WaitGroup{}
 		for i, r := range requests.GetRequests() {
 			wg.Add(1)
@@ -340,19 +336,16 @@ func (s *server) BatchSet(ctx context.Context, requests *pbv.BatchSetRequest) (*
 				// prepare request
 				req = s.prepareSetRequest(req)
 				s.setRequestCh <- req
-
-				// wait for it to be committed or aborted
-				for {
-					msg := <-s.setDoneCh
-					if msg == req.TxId {
-						break
-					}
-				}
-
 				responses[idx] = &pbv.SetResponse{Txid: req.TxId}
 			}(i, r)
 		}
 		wg.Wait()
-	*/
+	} else {
+		for idx, req := range requests.GetRequests() {
+			res, _ := s.Set(ctx, req)
+			responses[idx] = res
+		}
+	}
+
 	return &pbv.BatchSetResponse{Responses: responses}, nil
 }
