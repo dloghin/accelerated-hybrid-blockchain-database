@@ -2,6 +2,8 @@
 
 Accelerated Hybrid Blockchain Database
 
+Branch "baseline2" - ECDSA secp256k1 on CPU
+
 ## Getting started
 
 ### Pre-requisites
