@@ -19,8 +19,8 @@ for IDX in `seq 3 $N`; do
 	ADDRS="$ADDRS,$IPPREFIX.$IDX:1990"
 done
 
-#DRIVERS=4
-#THREADS="64"
+DRIVERS=4
+THREADS="32"
 for TH in $THREADS; do
     ./restart_cluster.sh
     ./start_hbdb.sh

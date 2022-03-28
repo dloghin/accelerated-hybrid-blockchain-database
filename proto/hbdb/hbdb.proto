@@ -19,12 +19,10 @@ message VerifyRequest {
 
 message VerifyResponse {
     string pubkey = 1;
-    string signature = 2;
-    string value = 3;
-    int64 version = 4;
-    bytes root_digest = 5;
-    repeated bytes side_nodes = 6;
-    bytes non_membership_leaf_data = 7;
+    string signature = 2;    
+    string blockId = 3;
+    string blockHash = 4;
+    string txnHash = 5;    
 }
 
 enum MessageType {
@@ -67,6 +65,7 @@ message SetRequest {
     string value = 4;
     int64 version = 5;
     string txId = 6;
+    string hash = 7;
 }
 
 message SetResponse {
