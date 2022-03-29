@@ -210,10 +210,10 @@ func (s *server) checkMVCC(ctx context.Context, key string, version int64) bool 
 	return true
 }
 
-func (s *server) prepareSetRequest(req *pbv.SetRequest, hash string) *pbv.SetRequest {
+func (s *server) prepareSetRequest(req *pbv.SetRequest, hash []byte) *pbv.SetRequest {
 	req.TxId = fmt.Sprintf("txid%stx%d", s.config.Signature, s.txcnt.Load())
 	s.txcnt.Inc()
-	req.Hash = hash
+	req.Hash = hex.EncodeToString(hash)
 	return req
 }
 
@@ -232,7 +232,7 @@ func (s *server) SetSync(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResp
 	}
 
 	// prepare request
-	req = s.prepareSetRequest(req, hex.EncodeToString(hash))
+	req = s.prepareSetRequest(req, hash)
 
 	// wait for it to be committed or aborted
 	wg := &sync.WaitGroup{}
@@ -265,7 +265,7 @@ func (s *server) Set(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResponse
 	}
 
 	// prepare and send request
-	req = s.prepareSetRequest(req, string(hash))
+	req = s.prepareSetRequest(req, hash)
 	s.setRequestCh <- req
 
 	return &pbv.SetResponse{Txid: req.TxId}, nil
@@ -336,7 +336,7 @@ func (s *server) BatchSet(ctx context.Context, requests *pbv.BatchSetRequest) (*
 				}
 
 				// prepare request
-				req = s.prepareSetRequest(req, hex.EncodeToString(hash))
+				req = s.prepareSetRequest(req, hash)
 				s.setRequestCh <- req
 				responses[idx] = &pbv.SetResponse{Txid: req.TxId}
 			}(i, r)

@@ -15,7 +15,6 @@ require (
 	github.com/gookit/event v1.0.5
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.13.6 // indirect
-	github.com/stretchr/testify v1.7.0
 	go.opencensus.io v0.23.0 // indirect
 	go.uber.org/atomic v1.9.0
 	golang.org/x/net v0.0.0-20220325170049-de3da57026de // indirect

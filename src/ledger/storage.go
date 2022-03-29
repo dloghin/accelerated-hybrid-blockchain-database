@@ -72,8 +72,11 @@ func (l *LogLedger) ProveKey(key []byte) (string, string, string, error) {
 }
 
 func (l *LogLedger) AppendBlk(block pbv.Block, blockData []byte) error {
+	//fmt.Printf("Size of block %d\n", len(blockData))
 	txn_hash := crypto.Keccak256(blockData)
-	blk_hash := crypto.Keccak256(append(txn_hash, l.prevBlockHash...))
+	blk_hash := crypto.Keccak256(append(l.prevBlockHash, txn_hash...))
+	// txn_hash := []byte("none")
+	// blk_hash := []byte("none")
 
 	return l.store.Update(func(txn *badger.Txn) error {
 		txn.Set([]byte("tip"), []byte(block.BlkId))
