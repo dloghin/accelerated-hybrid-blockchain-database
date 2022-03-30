@@ -30,6 +30,7 @@ type server struct {
 	puller       *kafka.Consumer
 	pusher       *kafka.Producer
 	setRequestCh chan *pbv.SetRequest
+	xclbinPath   string
 }
 
 type BlockPurpose struct {
@@ -37,12 +38,13 @@ type BlockPurpose struct {
 	approved map[string]struct{}
 }
 
-func NewServer(redisCli *redis.Client, consumer *kafka.Consumer, producer *kafka.Producer, ledgerPath string, config *Config) *server {
+func NewServer(redisCli *redis.Client, consumer *kafka.Consumer, producer *kafka.Producer, ledgerPath string, xclbinPath string, config *Config) *server {
 	ctx, cancel := context.WithCancel(context.Background())
 	l, err := ledger.NewLedger(ledgerPath, true)
 	if err != nil {
 		log.Fatalf("Create ledger failed: %v", err)
 	}
+	InitAccelerator(xclbinPath, config.BlockSize)
 	s := &server{
 		ctx:          ctx,
 		cancel:       cancel,
@@ -54,6 +56,7 @@ func NewServer(redisCli *redis.Client, consumer *kafka.Consumer, producer *kafka
 		puller:       consumer,
 		pusher:       producer,
 		setRequestCh: make(chan *pbv.SetRequest, 50000),
+		xclbinPath:   xclbinPath,
 	}
 	if err := s.puller.Subscribe(config.Topic, nil); err != nil {
 		log.Fatalf("Subscribe topic %v failed: %v", config.Topic, err)
@@ -95,7 +98,7 @@ func (s *server) verifyAndCommit(msg *kafka.Message, block pbv.Block) {
 		// s.setDoneCh <- req.GetTxId()
 		event.MustFire(req.TxId, nil)
 	}
-	s.ledger.AppendBlk(msg.Value) // avoid remarshalling from blkBuf.blk
+	// s.ledger.AppendBlk(msg.Value) // avoid remarshalling from blkBuf.blk
 }
 
 func (s *server) applyLoop() {
@@ -284,68 +287,175 @@ func (s *server) Verify(ctx context.Context, req *pbv.VerifyRequest) (*pbv.Verif
 func (s *server) BatchGet(ctx context.Context, requests *pbv.BatchGetRequest) (*pbv.BatchGetResponse, error) {
 	responses := make([]*pbv.GetResponse, len(requests.GetRequests()))
 
-	if s.config.ParallelBatchProcessing {
-		wg := &sync.WaitGroup{}
-		for i, r := range requests.GetRequests() {
-			wg.Add(1)
-			go func(idx int, req *pbv.GetRequest) {
-				defer wg.Done()
+	/*
+		if s.config.ParallelBatchProcessing {
+			wg := &sync.WaitGroup{}
+			for i, r := range requests.GetRequests() {
+				wg.Add(1)
+				go func(idx int, req *pbv.GetRequest) {
+					defer wg.Done()
 
-				err := VerifySignature(req.GetPubkey(), req.GetSignature(), req.GetKey())
-				if err != nil {
-					responses[idx] = nil
-					return
-				}
-				responses[idx], _ = s.getLocalData(ctx, req.GetKey())
-			}(i, r)
+					err := VerifySignature(req.GetPubkey(), req.GetSignature(), req.GetKey())
+					if err != nil {
+						responses[idx] = nil
+						return
+					}
+					responses[idx], _ = s.getLocalData(ctx, req.GetKey())
+				}(i, r)
+			}
+			wg.Wait()
+		} else {
+			for idx, req := range requests.GetRequests() {
+				res, _ := s.Get(ctx, req)
+				responses[idx] = res
+			}
 		}
-		wg.Wait()
-	} else {
-		for idx, req := range requests.GetRequests() {
-			res, _ := s.Get(ctx, req)
-			responses[idx] = res
+	*/
+
+	// We run the steps in parallel
+	wg := &sync.WaitGroup{}
+
+	// Step 1 - Verify
+	wg.Add(1)
+
+	// On CPU
+	/*
+		valid := make([]bool, len(requests.GetRequests()))
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			for idx, req := range requests.GetRequests() {
+				err := VerifySignature(req.GetPubkey(), req.GetSignature(), req.GetKey())
+				valid[idx] = (err == nil)
+			}
+			delta := time.Since(start).Seconds()
+			fmt.Printf("ECDSA verification of %d values took %f\n", len(requests.GetRequests()), delta)
+		}()
+	*/
+	// On Accelerator
+	var valid []bool
+	valid = nil
+	go func() {
+		defer wg.Done()
+		start := time.Now()
+		_, valid = VerifySignatureBatchAccelerator(nil, requests)
+		delta := time.Since(start).Seconds()
+		fmt.Printf("ECDSA verification of %d values took %f\n", len(requests.GetRequests()), delta)
+	}()
+
+	// Step 2 - Fetch Data
+	start := time.Now()
+	for idx, req := range requests.GetRequests() {
+		responses[idx], _ = s.getLocalData(ctx, req.GetKey())
+	}
+	delta := time.Since(start).Seconds()
+	fmt.Printf("Data fetch of %d values took %f\n", len(requests.GetRequests()), delta)
+
+	wg.Wait()
+
+	// combine the results
+	for idx, _ := range requests.GetRequests() {
+		if !valid[idx] {
+			responses[idx] = nil
 		}
 	}
-
 	return &pbv.BatchGetResponse{Responses: responses}, nil
 }
 
 func (s *server) BatchSet(ctx context.Context, requests *pbv.BatchSetRequest) (*pbv.BatchSetResponse, error) {
 	responses := make([]*pbv.SetResponse, len(requests.GetRequests()))
 
-	if s.config.ParallelBatchProcessing {
-		wg := &sync.WaitGroup{}
-		for i, r := range requests.GetRequests() {
-			wg.Add(1)
-			go func(idx int, req *pbv.SetRequest) {
-				defer wg.Done()
+	/*
+		if s.config.ParallelBatchProcessing {
+			wg := &sync.WaitGroup{}
+			for i, r := range requests.GetRequests() {
+				wg.Add(1)
+				go func(idx int, req *pbv.SetRequest) {
+					defer wg.Done()
 
-				// verify signature
+					// verify signature
+					payload := fmt.Sprintf("%s%s%d", req.GetKey(), req.GetValue(), req.GetVersion())
+					err := VerifySignature(req.GetPubkey(), req.GetSignature(), payload)
+					if err != nil {
+						responses[idx] = nil
+						return
+					}
+					// verify MVCC
+					if !s.checkMVCC(ctx, req.GetKey(), req.GetVersion()) {
+						responses[idx] = nil
+						return
+					}
+
+					// prepare request
+					req = s.prepareSetRequest(req)
+					s.setRequestCh <- req
+					responses[idx] = &pbv.SetResponse{Txid: req.TxId}
+				}(i, r)
+			}
+			wg.Wait()
+		} else {
+			for idx, req := range requests.GetRequests() {
+				res, _ := s.Set(ctx, req)
+				responses[idx] = res
+			}
+		}
+	*/
+
+	// We run the steps in parallel
+	wg := &sync.WaitGroup{}
+
+	// Step 1 - Verify
+	wg.Add(1)
+
+	// On CPU
+	/*
+		valid := make([]bool, len(requests.GetRequests()))
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			for idx, req := range requests.GetRequests() {
 				payload := fmt.Sprintf("%s%s%d", req.GetKey(), req.GetValue(), req.GetVersion())
 				err := VerifySignature(req.GetPubkey(), req.GetSignature(), payload)
-				if err != nil {
-					responses[idx] = nil
-					return
-				}
-				// verify MVCC
-				if !s.checkMVCC(ctx, req.GetKey(), req.GetVersion()) {
-					responses[idx] = nil
-					return
-				}
+				valid[idx] = (err == nil)
+			}
+			delta := time.Since(start).Seconds()
+			fmt.Printf("ECDSA verification of %d values took %f\n", len(requests.GetRequests()), delta)
+		}()
+	*/
+	// On Accelerator
+	var valid []bool
+	valid = nil
+	go func() {
+		defer wg.Done()
+		start := time.Now()
+		_, valid = VerifySignatureBatchAccelerator(requests, nil)
+		delta := time.Since(start).Seconds()
+		fmt.Printf("ECDSA verification of %d values took %f\n", len(requests.GetRequests()), delta)
+	}()
 
-				// prepare request
-				req = s.prepareSetRequest(req)
-				s.setRequestCh <- req
-				responses[idx] = &pbv.SetResponse{Txid: req.TxId}
-			}(i, r)
-		}
-		wg.Wait()
-	} else {
-		for idx, req := range requests.GetRequests() {
-			res, _ := s.Set(ctx, req)
-			responses[idx] = res
+	// Step 2 - Send Set request
+	processedRequests := make([]*pbv.SetRequest, len(requests.GetRequests()))
+	start := time.Now()
+	for idx, req := range requests.GetRequests() {
+		if s.checkMVCC(ctx, req.GetKey(), req.GetVersion()) {
+			processedRequests[idx] = s.prepareSetRequest(req)
+		} else {
+			processedRequests[idx] = nil
 		}
 	}
+	delta := time.Since(start).Seconds()
+	fmt.Printf("MVCC verification of %d values took %f\n", len(requests.GetRequests()), delta)
 
+	wg.Wait()
+
+	for idx, _ := range requests.GetRequests() {
+		if valid[idx] && processedRequests[idx] != nil {
+			// prepare request
+			s.setRequestCh <- processedRequests[idx]
+			responses[idx] = &pbv.SetResponse{Txid: processedRequests[idx].TxId}
+		} else {
+			responses[idx] = nil
+		}
+	}
 	return &pbv.BatchSetResponse{Responses: responses}, nil
 }

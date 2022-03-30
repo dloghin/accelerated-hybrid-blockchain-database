@@ -30,6 +30,7 @@ var (
 	redisPwd                = kingpin.Flag("redis-pwd", "redis password").String()
 	ledgerPath              = kingpin.Flag("ledger-path", "ledger path").Required().String()
 	parallelBatchProcessing = kingpin.Flag("parallel-batch-processing", "parallel request batch processing").Default("false").Bool()
+	xclbinPath              = kingpin.Flag("xclbin-path", "xclbin path").Required().String()
 )
 
 func check(err error) {
@@ -65,7 +66,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	svr := server.NewServer(r, c, p, *ledgerPath, &server.Config{
+	svr := server.NewServer(r, c, p, *ledgerPath, *xclbinPath, &server.Config{
 		Signature:               *signature,
 		Topic:                   *kafkaTopic,
 		Parties:                 pm,
