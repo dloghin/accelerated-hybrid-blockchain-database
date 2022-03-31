@@ -95,7 +95,7 @@ func (s *server) verifyAndCommit(msg *kafka.Message, block pbv.Block) {
 		// s.setDoneCh <- req.GetTxId()
 		event.MustFire(req.TxId, nil)
 	}
-	s.ledger.AppendBlk(msg.Value) // avoid remarshalling from blkBuf.blk
+	s.ledger.AppendBlk(block, msg.Value) // avoid remarshalling from blkBuf.blk
 }
 
 func (s *server) applyLoop() {
@@ -243,14 +243,14 @@ func (s *server) Set(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResponse
 }
 
 func (s *server) Verify(ctx context.Context, req *pbv.VerifyRequest) (*pbv.VerifyResponse, error) {
-	proof, err := s.ledger.ProveKey([]byte(req.GetKey()))
+	blkId, blkHash, txnHash, err := s.ledger.ProveKey([]byte(req.GetKey()))
 	if err != nil {
 		return nil, err
 	}
 	return &pbv.VerifyResponse{
-		RootDigest:            s.ledger.GetRootDigest(),
-		SideNodes:             proof.SideNodes,
-		NonMembershipLeafData: proof.NonMembershipLeafData,
+		BlockId:   blkId,
+		BlockHash: blkHash,
+		TxnHash:   txnHash,
 	}, nil
 }
 
