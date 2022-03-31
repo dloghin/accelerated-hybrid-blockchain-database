@@ -98,3 +98,9 @@ bin/ycsb.sh run basic -P $WLOAD_DIR/zipfian/workloadc -p recordcount="${RECORD_C
 popd
 # shellcheck disable=SC2164
 popd
+
+cd ${WORK_DIR}/..
+mv temp temp1
+mkdir temp
+mv temp1/go temp/
+mv temp1/gopath temp/

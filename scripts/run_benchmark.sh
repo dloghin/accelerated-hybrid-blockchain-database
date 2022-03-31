@@ -19,8 +19,11 @@ for IDX in `seq 3 $N`; do
 	ADDRS="$ADDRS,$IPPREFIX.$IDX:1990"
 done
 
-#DRIVERS=4
-#THREADS="64"
+if [ $# -lt 1 ] || [ $1 != "all" ]; then
+	DRIVERS=2
+	THREADS="4"
+fi
+
 for TH in $THREADS; do
     ./restart_cluster.sh
     ./start_hbdb.sh
@@ -31,10 +34,10 @@ for TH in $THREADS; do
     # copy logs
     SLOGS="$LOGS/hbdb-clients-$TH-logs"
     mkdir -p $SLOGS
-    for I in `seq 2 5`; do
+    for I in `seq 2 $N`; do
 	    IDX=$(($I-1))
 	    scp -o StrictHostKeyChecking=no root@$IPPREFIX.$I:/hbdb-server-$IDX.log $SLOGS/
     done
-    scp -o StrictHostKeyChecking=no root@$IPPREFIX.6:/kafka_2.12-2.7.0/zookeeper.log $SLOGS/
-    scp -o StrictHostKeyChecking=no root@$IPPREFIX.6:/kafka_2.12-2.7.0/kafka.log $SLOGS/
+    scp -o StrictHostKeyChecking=no root@$IPPREFIX.$(($N+1)):/kafka_2.12-2.7.0/zookeeper.log $SLOGS/
+    scp -o StrictHostKeyChecking=no root@$IPPREFIX.$(($N+1)):/kafka_2.12-2.7.0/kafka.log $SLOGS/
 done
