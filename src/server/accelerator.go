@@ -1,7 +1,7 @@
 package server
 
-// #cgo CFLAGS: -I/home/dumi/git/hbdb_ecdsa/microbench
-// #cgo LDFLAGS: -L/home/dumi/git/hbdb_ecdsa/microbench -lkeccak
+// #cgo CFLAGS: -I../../accelerator/sw/keccak256
+// #cgo LDFLAGS: -L../../accelerator/sw/keccak256 -lkeccak
 // #include "keccak.h"
 import "C"
 

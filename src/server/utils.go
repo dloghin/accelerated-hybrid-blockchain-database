@@ -72,16 +72,16 @@ func LoadECDSAPub(file string) (*ecdsa.PublicKey, error) {
 	return crypto.UnmarshalPubkey(decoded)
 }
 
-func VerifySignature(publicKeyStr, signatureStr, payload string) error {
+func VerifySignature(publicKeyStr, signatureStr, payload string) ([]byte, error) {
 	publicKey, err := hex.DecodeString(publicKeyStr)
 	if err != nil {
 		fmt.Printf("Error in decode hex %v\n", err)
-		return err
+		return nil, err
 	}
 	signature, err := hex.DecodeString(signatureStr)
 	if err != nil {
 		fmt.Printf("Error in decode hex %v\n", err)
-		return err
+		return nil, err
 	}
 	/*
 		// for debugging only
@@ -99,7 +99,7 @@ func VerifySignature(publicKeyStr, signatureStr, payload string) error {
 		}
 	*/
 	if !secp256k1.VerifySignature(publicKey, digest, signature) {
-		return errors.New("Invalid Signature")
+		return nil, errors.New("Invalid Signature")
 	}
-	return nil
+	return digest, nil
 }

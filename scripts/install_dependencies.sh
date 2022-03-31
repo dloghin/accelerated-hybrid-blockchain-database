@@ -18,7 +18,7 @@ sudo apt-get -y install docker-ce docker-ce-cli containerd.io
 sudo adduser $MYUSER docker
 
 # OpenVSwitch, KafkaCat, jq, make, gcc, java, pip
-sudo apt -y install openvswitch-switch kafkacat jq make gcc default-jdk python3-pip
+sudo apt -y install net-tools openvswitch-switch kafkacat jq make gcc default-jdk python3-pip
 
 # Go 1.16.10
 mkdir -p temp

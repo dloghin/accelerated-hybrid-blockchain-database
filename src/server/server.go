@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -98,7 +99,7 @@ func (s *server) verifyAndCommit(msg *kafka.Message, block pbv.Block) {
 		// s.setDoneCh <- req.GetTxId()
 		event.MustFire(req.TxId, nil)
 	}
-	// s.ledger.AppendBlk(msg.Value) // avoid remarshalling from blkBuf.blk
+	s.ledger.AppendBlk(block, msg.Value) // avoid remarshalling from blkBuf.blk
 }
 
 func (s *server) applyLoop() {
@@ -176,7 +177,7 @@ func (s *server) getLocalData(ctx context.Context, key string) (*pbv.GetResponse
 
 func (s *server) Get(ctx context.Context, req *pbv.GetRequest) (*pbv.GetResponse, error) {
 	// check signature
-	err := VerifySignature(req.GetPubkey(), req.GetSignature(), req.GetKey())
+	_, err := VerifySignature(req.GetPubkey(), req.GetSignature(), req.GetKey())
 	if err != nil {
 		fmt.Println()
 		fmt.Printf("Error in VerifySignature Get %v\n", req.GetKey())
@@ -212,16 +213,17 @@ func (s *server) checkMVCC(ctx context.Context, key string, version int64) bool 
 	return true
 }
 
-func (s *server) prepareSetRequest(req *pbv.SetRequest) *pbv.SetRequest {
+func (s *server) prepareSetRequest(req *pbv.SetRequest, hash []byte) *pbv.SetRequest {
 	req.TxId = fmt.Sprintf("txid%stx%d", s.config.Signature, s.txcnt.Load())
 	s.txcnt.Inc()
+	req.Hash = hex.EncodeToString(hash)
 	return req
 }
 
 func (s *server) SetSync(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResponse, error) {
 	// check signature
 	payload := fmt.Sprintf("%s%s%d", req.GetKey(), req.GetValue(), req.GetVersion())
-	err := VerifySignature(req.GetPubkey(), req.GetSignature(), payload)
+	hash, err := VerifySignature(req.GetPubkey(), req.GetSignature(), payload)
 	if err != nil {
 		fmt.Println("Error in VerifySignature Set")
 		return nil, errors.New("Invalid Signature")
@@ -233,7 +235,7 @@ func (s *server) SetSync(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResp
 	}
 
 	// prepare request
-	req = s.prepareSetRequest(req)
+	req = s.prepareSetRequest(req, hash)
 
 	// wait for it to be committed or aborted
 	wg := &sync.WaitGroup{}
@@ -254,7 +256,7 @@ func (s *server) SetSync(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResp
 func (s *server) Set(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResponse, error) {
 	// check signature
 	payload := fmt.Sprintf("%s%s%d", req.GetKey(), req.GetValue(), req.GetVersion())
-	err := VerifySignature(req.GetPubkey(), req.GetSignature(), payload)
+	hash, err := VerifySignature(req.GetPubkey(), req.GetSignature(), payload)
 	if err != nil {
 		fmt.Println("Error in VerifySignature Set")
 		return nil, errors.New("Invalid Signature")
@@ -266,21 +268,21 @@ func (s *server) Set(ctx context.Context, req *pbv.SetRequest) (*pbv.SetResponse
 	}
 
 	// prepare and send request
-	req = s.prepareSetRequest(req)
+	req = s.prepareSetRequest(req, hash)
 	s.setRequestCh <- req
 
 	return &pbv.SetResponse{Txid: req.TxId}, nil
 }
 
 func (s *server) Verify(ctx context.Context, req *pbv.VerifyRequest) (*pbv.VerifyResponse, error) {
-	proof, err := s.ledger.ProveKey([]byte(req.GetKey()))
+	blkId, blkHash, txnHash, err := s.ledger.ProveKey([]byte(req.GetKey()))
 	if err != nil {
 		return nil, err
 	}
 	return &pbv.VerifyResponse{
-		RootDigest:            s.ledger.GetRootDigest(),
-		SideNodes:             proof.SideNodes,
-		NonMembershipLeafData: proof.NonMembershipLeafData,
+		BlockId:   blkId,
+		BlockHash: blkHash,
+		TxnHash:   txnHash,
 	}, nil
 }
 
@@ -425,10 +427,12 @@ func (s *server) BatchSet(ctx context.Context, requests *pbv.BatchSetRequest) (*
 	// On Accelerator
 	var valid []bool
 	valid = nil
+	var hash []byte
+	hash = nil
 	go func() {
 		defer wg.Done()
 		start := time.Now()
-		_, valid = VerifySignatureBatchAccelerator(requests, nil)
+		hash, valid = VerifySignatureBatchAccelerator(requests, nil)
 		delta := time.Since(start).Seconds()
 		fmt.Printf("ECDSA verification of %d values took %f\n", len(requests.GetRequests()), delta)
 	}()
@@ -438,7 +442,7 @@ func (s *server) BatchSet(ctx context.Context, requests *pbv.BatchSetRequest) (*
 	start := time.Now()
 	for idx, req := range requests.GetRequests() {
 		if s.checkMVCC(ctx, req.GetKey(), req.GetVersion()) {
-			processedRequests[idx] = s.prepareSetRequest(req)
+			processedRequests[idx] = s.prepareSetRequest(req, hash[32*idx:32*(idx+1)])
 		} else {
 			processedRequests[idx] = nil
 		}
