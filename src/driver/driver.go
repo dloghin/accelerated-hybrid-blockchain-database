@@ -3,7 +3,6 @@ package driver
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"fmt"
 
 	"encoding/hex"
@@ -13,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 
 	pbv "hbdb/proto/hbdb"
+	"hbdb/src/utils"
 )
 
 type Driver struct {
@@ -23,21 +23,6 @@ type Driver struct {
 	dbCli     pbv.NodeClient
 }
 
-// taken from https://github.com/ethereum/go-ethereum/blob/master/crypto/secp256k1/secp256_test.go
-func DecodeKeyPair(key *ecdsa.PrivateKey) (pubkey, privkey []byte) {
-	pubkey = elliptic.Marshal(secp256k1.S256(), key.X, key.Y)
-
-	privkey = make([]byte, 32)
-	blob := key.D.Bytes()
-	copy(privkey[32-len(blob):], blob)
-
-	//fmt.Println("***")
-	//fmt.Printf("Public: %v\n", pubkey)
-	//fmt.Printf("Private: %v\n", privkey)
-
-	return pubkey, privkey
-}
-
 func Open(serverAddr string, pvk *ecdsa.PrivateKey) (*Driver, error) {
 	cc, err := grpc.Dial(serverAddr, grpc.WithInsecure())
 	if err != nil {
@@ -45,7 +30,7 @@ func Open(serverAddr string, pvk *ecdsa.PrivateKey) (*Driver, error) {
 	}
 	dbCli := pbv.NewNodeClient(cc)
 
-	pubkey, privkey := DecodeKeyPair(pvk)
+	pubkey, privkey := utils.DecodeKeyPair(pvk)
 
 	return &Driver{
 		pubkey:    pubkey,

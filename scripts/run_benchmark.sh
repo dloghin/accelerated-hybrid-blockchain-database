@@ -21,23 +21,16 @@ done
 
 if [ $# -lt 1 ] || [ $1 != "all" ]; then
 	DRIVERS=2
-	THREADS="4"
+	THREADS="64"
 fi
 
 for TH in $THREADS; do
     ./restart_cluster.sh
-    ./start_hbdb.sh
-    # Run with simple (sigle) requests
-    #../bin/hbdb-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS --key-file-prefix=client 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
-    # Run with batch requests
-    ../bin/hbdb-batch-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=$ADDRS --key-file-prefix=client 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
-    # copy logs
+    ./start_hbdb.sh   
+    ../bin/hbdb-batch-bench --load-path=$WORKLOAD_FILE --run-path=$WORKLOAD_RUN_FILE --ndrivers=$DRIVERS --nthreads=$TH --server-addrs=127.0.0.1:1990 --key-file-prefix=client 2>&1 | tee $LOGS/hbdb-clients-$TH.txt
     SLOGS="$LOGS/hbdb-clients-$TH-logs"
     mkdir -p $SLOGS
-    for I in `seq 2 $N`; do
-	    IDX=$(($I-1))
-	    scp -o StrictHostKeyChecking=no root@$IPPREFIX.$I:/hbdb-server-$IDX.log $SLOGS/
-    done
+    mv hbdb-server-1.log $SLOGS/    
     scp -o StrictHostKeyChecking=no root@$IPPREFIX.$(($N+1)):/kafka_2.12-2.7.0/zookeeper.log $SLOGS/
     scp -o StrictHostKeyChecking=no root@$IPPREFIX.$(($N+1)):/kafka_2.12-2.7.0/kafka.log $SLOGS/
 done

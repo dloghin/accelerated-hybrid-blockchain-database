@@ -6,7 +6,8 @@ if ! [ -d "../../bin" ]; then
 fi
 
 rm -rd bin
-cp -r ../../bin .	
+cp -r ../../bin .
+cp ../../accelerator/bin/* bin/
 
 if ! [ -f "id_rsa.pub" ]; then
     if ! [ -f "$HOME/.ssh/id_rsa.pub" ]; then

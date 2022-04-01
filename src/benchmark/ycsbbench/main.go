@@ -17,7 +17,7 @@ import (
 
 	"hbdb/src/benchmark"
 	"hbdb/src/driver"
-	"hbdb/src/server"
+	"hbdb/src/utils"
 )
 
 var (
@@ -38,7 +38,7 @@ func main() {
 		panic(err)
 	}
 
-	pub, err := server.LoadECDSAPub(*keyFilePrefix + ".pub")
+	pub, err := utils.LoadECDSAPub(*keyFilePrefix + ".pub")
 	if err != nil {
 		panic(err)
 	}

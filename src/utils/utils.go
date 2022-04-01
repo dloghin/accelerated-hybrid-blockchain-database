@@ -1,8 +1,9 @@
-package server
+package utils
 
 import (
 	"bufio"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -70,6 +71,21 @@ func LoadECDSAPub(file string) (*ecdsa.PublicKey, error) {
 		return nil, err
 	}
 	return crypto.UnmarshalPubkey(decoded)
+}
+
+// taken from https://github.com/ethereum/go-ethereum/blob/master/crypto/secp256k1/secp256_test.go
+func DecodeKeyPair(key *ecdsa.PrivateKey) (pubkey, privkey []byte) {
+	pubkey = elliptic.Marshal(secp256k1.S256(), key.X, key.Y)
+
+	privkey = make([]byte, 32)
+	blob := key.D.Bytes()
+	copy(privkey[32-len(blob):], blob)
+
+	//fmt.Println("***")
+	//fmt.Printf("Public: %v\n", pubkey)
+	//fmt.Printf("Private: %v\n", privkey)
+
+	return pubkey, privkey
 }
 
 func VerifySignature(publicKeyStr, signatureStr, payload string) ([]byte, error) {
