@@ -1,3 +1,19 @@
+/*
+ * Copyright 2022 Dumitrel Loghin
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package main
 
 // #cgo LDFLAGS: -L/home/dumi/git/hbdb_ecdsa/microbench -lkeccak
@@ -12,9 +28,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"go.uber.org/atomic"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"github.com/ethereum/go-ethereum/crypto"
 
 	"hbdb/src/benchmark"
 )
@@ -45,12 +61,12 @@ func main() {
 			reqNum.Add(1)
 			operands := strings.SplitN(line, " ", 5)
 			l := len(operands[2])
-	                if l % 8 != 0 {
-		                l = 8 * (l / 8 + 1)
+			if l%8 != 0 {
+				l = 8 * (l/8 + 1)
 			}
-	                // copy data
+			// copy data
 			buf := make([]byte, l)
-	                copy(buf, operands[2])
+			copy(buf, operands[2])
 			runBuf <- string(buf)
 			return nil
 		}); err != nil {
@@ -72,14 +88,14 @@ func main() {
 		outFile.Close()
 	} else {
 		for j := 0; j < *concurrency; j++ {
-                        wg.Add(1)
-                        go func() {
-                                defer wg.Done()
-                                for msg := range runBuf {
-                                        crypto.Keccak256([]byte(msg))
-                                }
-                        }()
-                }
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for msg := range runBuf {
+					crypto.Keccak256([]byte(msg))
+				}
+			}()
+		}
 
 		start := time.Now()
 		wg.Wait()

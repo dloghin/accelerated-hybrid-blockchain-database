@@ -1,3 +1,19 @@
+/*
+ * Copyright 2022 Dumitrel Loghin
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package main
 
 // #cgo CFLAGS: -I../accelerator/sw/keccak256
@@ -45,12 +61,12 @@ func main() {
 			reqNum.Add(1)
 			operands := strings.SplitN(line, " ", 5)
 			l := len(operands[2])
-                        if l % 8 != 0 {
-                                l = 8 * (l / 8 + 1)
-                        }
-                        // copy data
-                        buf := make([]byte, l)
-                        copy(buf, operands[2])
+			if l%8 != 0 {
+				l = 8 * (l/8 + 1)
+			}
+			// copy data
+			buf := make([]byte, l)
+			copy(buf, operands[2])
 			runBuf <- string(buf)
 			return nil
 		}); err != nil {
@@ -63,15 +79,15 @@ func main() {
 	var outFile *os.File
 	if *saveResults {
 		outFile, err = os.Create("output-acc.txt")
-                if err != nil {
-                        fmt.Printf("Error creating output file: %v\n", err)
-                }
+		if err != nil {
+			fmt.Printf("Error creating output file: %v\n", err)
+		}
 	}
 
 	// init kernel
 	xclpath := []byte("../accelerator/bin/keccak256_kernel.xclbin")
-        cstr := (*C.char)(unsafe.Pointer(&xclpath[0]))
-        C.init_kernel(cstr, 100)
+	cstr := (*C.char)(unsafe.Pointer(&xclpath[0]))
+	C.init_kernel(cstr, 100)
 	num := 100
 	cnum := C.int(num)
 	data := make([]byte, num*256)
@@ -81,9 +97,9 @@ func main() {
 	// run in batches
 	start := time.Now()
 	for msg := range runBuf {
-		// align to 8 bytes 
+		// align to 8 bytes
 		l := len(msg)
-		if l % 8 != 0 {
+		if l%8 != 0 {
 			fmt.Println("Message is not aligned to 8 bytes!\n")
 			return
 		}
@@ -97,14 +113,14 @@ func main() {
 		if idx == num {
 			// call kernel
 			dptr := (*C.uchar)(unsafe.Pointer(&data[0]))
-		        sptr := (*C.int)(unsafe.Pointer(&sizes[0]))
-		        size := C.send_data(dptr, sptr, cnum)
-		        // fmt.Printf("Size %v Offset %d\n", size, offset)
-		        C.run_kernel(cnum, C.int(size))
-		        rptr := C.get_results(cnum)
-		        res := C.GoBytes(unsafe.Pointer(rptr), 3200)
+			sptr := (*C.int)(unsafe.Pointer(&sizes[0]))
+			size := C.send_data(dptr, sptr, cnum)
+			// fmt.Printf("Size %v Offset %d\n", size, offset)
+			C.run_kernel(cnum, C.int(size))
+			rptr := C.get_results(cnum)
+			res := C.GoBytes(unsafe.Pointer(rptr), 3200)
 			if *saveResults {
-			        for i := 0; i < num; i++ {
+				for i := 0; i < num; i++ {
 					outFile.WriteString(hex.EncodeToString(res[32*i:32*i+32]) + "\n")
 				}
 			}
@@ -115,9 +131,9 @@ func main() {
 		}
 	}
 	delta := time.Since(start).Seconds()
-        fmt.Printf("Throughput on FPGA to handle %v requests: %v req/s\n",
+	fmt.Printf("Throughput on FPGA to handle %v requests: %v req/s\n",
 		reqNum, int64(float64(reqNum.Load())/delta),
-        )
+	)
 
 	if *saveResults {
 		outFile.Close()

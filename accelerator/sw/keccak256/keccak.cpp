@@ -1,3 +1,19 @@
+/*
+ * Copyright 2022 Dumitrel Loghin
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include "keccak.hpp"
 #include "keccak.h"
 
@@ -88,33 +104,35 @@ KernelQueue init(std::string xclbin_path, int num)
     return kq;
 }
 
+// Test function
 // read and prepare data arrays
 // return msg array size (each element is 4 bytes)
 int read_data(FILE *fin, int num)
 {
     // read data
-    char line[256]; 
+    char line[256];
     size_t len = 0;
     int offidx = 0;
     for (int i = 0; i < num; i++)
     {
         // if (getline(&line, &len, fin) == -1)
-	if (!fgets(line, 256, fin))
-	{
-        	std::cout << "No more data.\n";
-        	break;
+        if (!fgets(line, 256, fin))
+        {
+            std::cout << "No more data.\n";
+            break;
         }
 
         // TODO
         // len = 16;
-	len = strlen(line);
-	
-	int len1 = len;
-	if (len % 8 != 0) {
-		len = 8 * (len / 8 + 1);
-	}
-	// printf("Original %d, new %d\n", len1, len);
-	
+        len = strlen(line);
+
+        int len1 = len;
+        if (len % 8 != 0)
+        {
+            len = 8 * (len / 8 + 1);
+        }
+        // printf("Original %d, new %d\n", len1, len);
+
         results[i] = 0;
         msgLen[i].range(127, 64) = (uint64_t)0;
         msgLen[i].range(63, 0) = (uint64_t)len;
@@ -129,8 +147,8 @@ int read_data(FILE *fin, int num)
                 msg[offidx] = 0;
             }
         }
-	
-	for (int j = (int)len1; j < (int)len; j++)
+
+        for (int j = (int)len1; j < (int)len; j++)
         {
             int idx2 = (j % 8) * 8;
             msg[offidx].range(idx2 + 7, idx2) = 0;
@@ -170,7 +188,6 @@ void run(KernelQueue kq, int num, int size)
     events_read.resize(1);
 
     // struct timeval start_time, end_time;
-
     // launch kernel and calculate kernel execution time
     // std::cout << "kernel start------" << std::endl;
     // gettimeofday(&start_time, 0);
@@ -185,6 +202,7 @@ void run(KernelQueue kq, int num, int size)
     // std::cout << "Execution time " << tvdiff(&start_time, &end_time) / 1000.0 << "ms" << std::endl;
 }
 
+// Test function
 // Write digest to file
 void write_data(FILE *fout, int num)
 {
@@ -201,19 +219,32 @@ void write_data(FILE *fout, int num)
     }
 }
 
-// C functions to be called from Go
-void init_kernel(char *xcl, int num)
+/*
+ * *** C functions to be called from Go *** 
+ */
+
+// Init FPGA kernel from .xclbin file (path)
+// xcl - xclbin path
+// num - number of elements in the buffers
+void init_kernel(char* xcl, int num)
 {
     std::string xclfile(xcl);
     kq = init(xclfile, num);
 }
 
+// Run kernel on FPGA
+// num - number of elements in the buffers
+// size - size of message buffer (in chunks of 8 bytes)
 void run_kernel(int num, int size)
 {
     run(kq, num, size);
 }
 
-int send_data(unsigned char *data, int *sizes, int num)
+// Send data to FPGA
+// data - data buffer (bytes)
+// sizes - size of each message in data (bytes)
+// num - number of elements in data
+int send_data(unsigned char* data, int* sizes, int num)
 {
     int inpidx = 0;
     int offidx = 0;
@@ -237,7 +268,7 @@ int send_data(unsigned char *data, int *sizes, int num)
                 next = false;
             }
         }
-	// printf("%d -> %d\n", sizes[i], offidx);
+        // printf("%d -> %d\n", sizes[i], offidx);
         if (next)
         {
             offidx++;
@@ -247,6 +278,8 @@ int send_data(unsigned char *data, int *sizes, int num)
     return offidx;
 }
 
+// Get data from FPGA
+// num - number of elements (each results has 32 bytes)
 unsigned char *get_results(int num)
 {
     for (int i = 0; i < num; i++)
