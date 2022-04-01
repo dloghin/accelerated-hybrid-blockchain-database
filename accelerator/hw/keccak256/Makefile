@@ -74,10 +74,11 @@ endif
 endif
 
 # ######################## Setting up Project Variables #################################
-MK_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
-XF_PROJ_ROOT ?= $(shell bash -c 'export MK_PATH=$(MK_PATH); echo $${MK_PATH%/L1/*}')
-CUR_DIR := $(patsubst %/,%,$(dir $(MK_PATH)))
-XFLIB_DIR = $(XF_PROJ_ROOT)
+ifeq ($(XFLIB_DIR),)
+$(error [ERROR]: Please set XFLIB_DIR to Vitis_Libraries/security)
+endif
+XF_PROJ_ROOT = $(XFLIB_DIR)
+CUR_DIR = $(shell pwd)
 
 # ######################### Include environment variables in utils.mk ####################
 include ./utils.mk
@@ -100,16 +101,13 @@ endif
 
 # ######################### Setting up Host Variables #########################
 #Include Required Host Source Files
-HOST_SRCS += $(XFLIB_DIR)/L1/benchmarks/keccak256/host/host.cpp
-HOST_SRCS += $(XFLIB_DIR)/ext/xcl2/xcl2.cpp
+HOST_SRCS += host/host.cpp
+HOST_SRCS += ../../ext/xcl2.cpp
 CXXFLAGS += -I$(XFLIB_DIR)/L1/include
-CXXFLAGS += -I$(XFLIB_DIR)/L1/benchmarks/keccak256/host
-CXXFLAGS += -I$(XFLIB_DIR)/L1/benchmarks/keccak256/kernel
-CXXFLAGS += -I$(XFLIB_DIR)/ext/xcl2
+CXXFLAGS += -Ihost
+CXXFLAGS += -Ikernel
+CXXFLAGS += -I../../ext
 CXXFLAGS += -I$(XFLIB_DIR)/../utils/L1/include
-CXXFLAGS += -I$(XFLIB_DIR)/ext/xcl2
-
-
 
 ifeq ($(TARGET),sw_emu)
 CXXFLAGS += -D SW_EMU_TEST
@@ -160,7 +158,7 @@ VPP_FLAGS += --hls.jobs 8
 #VPP_LDFLAGS += --vivado.synth.jobs 8 --vivado.impl.jobs 8 --debug.protocol all
 VPP_LDFLAGS += --vivado.synth.jobs 8 --vivado.impl.jobs 8
 ifneq (,$(shell echo $(XPLATFORM) | awk '/u55/'))
-VPP_FLAGS += --config $(CUR_DIR)/conn_u55.cfg
+VPP_FLAGS += --config conn_u55.cfg
 endif
 
 VPP_FLAGS += -I$(XFLIB_DIR)/L1/include

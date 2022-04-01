@@ -53,7 +53,7 @@ help::
 TARGET ?= sw_emu
 
 # ################### Setting up default value of DEVICE ##############################
-DEVICE ?= xilinx_u50_gen3x16_xdma_201920_3
+DEVICE ?= xilinx_u55n_gen3x4_xdma_1_202110_1
 
 # ###################### Setting up default value of HOST_ARCH ####################### 
 HOST_ARCH ?= x86
@@ -73,10 +73,11 @@ endif
 endif
 
 # ######################## Setting up Project Variables #################################
-MK_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
-XF_PROJ_ROOT ?= $(shell bash -c 'export MK_PATH=$(MK_PATH); echo $${MK_PATH%/L1/*}')
-CUR_DIR := $(patsubst %/,%,$(dir $(MK_PATH)))
-XFLIB_DIR = $(XF_PROJ_ROOT)
+ifeq ($(XFLIB_DIR),)
+$(error [ERROR]: Please set XFLIB_DIR to Vitis_Libraries/security)
+endif
+XF_PROJ_ROOT = $(XFLIB_DIR)
+CUR_DIR = $(shell pwd)
 
 # ######################### Include environment variables in utils.mk ####################
 include ./utils.mk
@@ -99,16 +100,13 @@ endif
 
 # ######################### Setting up Host Variables #########################
 #Include Required Host Source Files
-HOST_SRCS += $(XFLIB_DIR)/L1/benchmarks/ecdsa_secp256k1/host/host.cpp
-HOST_SRCS += $(XFLIB_DIR)/ext/xcl2/xcl2.cpp
+HOST_SRCS += host/host.cpp
+HOST_SRCS += ../../ext/xcl2.cpp
 CXXFLAGS += -I$(XFLIB_DIR)/L1/include
-CXXFLAGS += -I$(XFLIB_DIR)/L1/benchmarks/ecdsa_secp256k1/host
-CXXFLAGS += -I$(XFLIB_DIR)/L1/benchmarks/ecdsa_secp256k1/kernel
-CXXFLAGS += -I$(XFLIB_DIR)/ext/xcl2
+CXXFLAGS += -Ihost
+CXXFLAGS += -Ikernel
+CXXFLAGS += -I../../ext
 CXXFLAGS += -I$(XFLIB_DIR)/../utils/L1/include
-CXXFLAGS += -I$(XFLIB_DIR)/ext/xcl2
-
-
 
 ifeq ($(TARGET),sw_emu)
 CXXFLAGS += -D SW_EMU_TEST
@@ -165,7 +163,7 @@ endif
 VPP_FLAGS += -I$(XFLIB_DIR)/L1/include
 
 VPP_FLAGS += -I$(XFLIB_DIR)/L1/include
-VPP_FLAGS += -I$(XFLIB_DIR)/L1/benchmarks/ecdsa_secp256k1/kernel
+VPP_FLAGS += -Ikernel
 
 #Kernel_VPP_FLAGS += --hls.clock 300000000:verify_kernel
 #ifneq ($(HOST_ARCH), x86)
@@ -173,7 +171,6 @@ VPP_FLAGS += -I$(XFLIB_DIR)/L1/benchmarks/ecdsa_secp256k1/kernel
 #else
 #VPP_LDFLAGS_Kernel += --kernel_frequency 300
 #endif
-
 
 # Kernel args
 
