@@ -18,18 +18,19 @@ package main
 
 // #cgo LDFLAGS: -L/home/dumi/git/hbdb_ecdsa/microbench -lkeccak
 // #include "keccak.h"
-import "C"
+// import "C"
 
 import (
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"go.uber.org/atomic"
+	"golang.org/x/crypto/sha3"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"hbdb/src/benchmark"
@@ -40,6 +41,21 @@ var (
 	concurrency = kingpin.Flag("nthreads", "Number of threads for each driver").Default("10").Int()
 	saveResults = kingpin.Flag("save", "Save digests to output-cpu.txt").Bool()
 )
+
+type KeccakState interface {
+	hash.Hash
+	Read([]byte) (int, error)
+}
+
+func myKeccak256(data ...[]byte) []byte {
+	b := make([]byte, 32)
+	d := sha3.New256().(KeccakState)
+	for _, b := range data {
+		d.Write(b)
+	}
+	d.Read(b)
+	return b
+}
 
 func main() {
 	kingpin.Parse()
@@ -61,9 +77,9 @@ func main() {
 			reqNum.Add(1)
 			operands := strings.SplitN(line, " ", 5)
 			l := len(operands[2])
-			if l%8 != 0 {
-				l = 8 * (l/8 + 1)
-			}
+			// if l%8 != 0 {
+			//	l = 8 * (l/8 + 1)
+			// }
 			// copy data
 			buf := make([]byte, l)
 			copy(buf, operands[2])
@@ -82,7 +98,9 @@ func main() {
 			fmt.Printf("Error creating output file: %v\n", err)
 		}
 		for msg := range runBuf {
-			hash := crypto.Keccak256([]byte(msg))
+			hash := myKeccak256([]byte(msg))
+			// outFile.WriteString("|" + msg + "|\n")
+			// outFile.WriteString(hex.EncodeToString(hash) + " " + strconv.FormatInt(int64(len(msg)), 10) + "\n")
 			outFile.WriteString(hex.EncodeToString(hash) + "\n")
 		}
 		outFile.Close()
@@ -92,7 +110,7 @@ func main() {
 			go func() {
 				defer wg.Done()
 				for msg := range runBuf {
-					crypto.Keccak256([]byte(msg))
+					myKeccak256([]byte(msg))
 				}
 			}()
 		}

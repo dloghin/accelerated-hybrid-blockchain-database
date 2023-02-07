@@ -29,8 +29,11 @@ The code of this project started from [this code](https://github.com/nusdbsystem
 - Build docker images
 
 ```
+# in the root of the repo
+go mod tidy
 cd scripts
 ./install_dependencies.sh
+# build libkeccak256 (see below)
 ./build_binaries.sh
 ./gen_ycsb_data.sh 
 mv temp temp1

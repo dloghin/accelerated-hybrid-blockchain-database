@@ -118,10 +118,12 @@ func main() {
 			// fmt.Printf("Size %v Offset %d\n", size, offset)
 			C.run_kernel(cnum, C.int(size))
 			rptr := C.get_results(cnum)
-			res := C.GoBytes(unsafe.Pointer(rptr), 3200)
-			if *saveResults {
-				for i := 0; i < num; i++ {
-					outFile.WriteString(hex.EncodeToString(res[32*i:32*i+32]) + "\n")
+			if rptr != C.nil {
+				res := C.GoBytes(unsafe.Pointer(rptr), 3200)
+				if *saveResults {
+					for i := 0; i < num; i++ {
+						outFile.WriteString(hex.EncodeToString(res[32*i:32*i+32]) + "\n")
+					}
 				}
 			}
 
