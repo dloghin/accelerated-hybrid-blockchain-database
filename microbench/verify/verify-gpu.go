@@ -19,6 +19,7 @@ package main
 // #cgo CFLAGS: -I/home/dumi/git/RapidEC/src
 // #cgo LDFLAGS: -L/home/dumi/git/RapidEC/src -lverify
 // #include "hbdb_interface.h"
+import "C"
 
 import (
 	"fmt"
@@ -119,6 +120,14 @@ func main() {
 	}()
 	time.Sleep(5 * time.Second)
 
+	var outFile *os.File
+	if *saveResults {
+		outFile, err = os.Create("output-gpu.txt")
+		if err != nil {
+			fmt.Printf("Error creating output file: %v\n", err)
+		}
+	}
+
 	// init kernel
 	num := 100
 	cnum := C.int(num)
@@ -171,4 +180,7 @@ func main() {
 	fmt.Printf("Throughput with %v concurrency to handle %v requests: %v req/s\n",
 		*concurrency, reqNum, int64(float64(reqNum.Load())/delta),
 	)
+	if *saveResults {
+		outFile.Close()
+	}
 }
