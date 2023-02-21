@@ -14,7 +14,7 @@ public:
     const void print(const ap_uint<N> &x) {
         printf("AP(%d): ", 32 * x.size);
         for (int i = x.size-1; i >= 0; i--) {
-            printf("%0X", x.a[i]);            
+            printf("%0X ", x.a[i]);            
         }
         printf("\n");
     }
@@ -27,6 +27,12 @@ public:
     ap_uint<N>(uint32_t x)
     {
         a[0] = x;
+    }
+
+    ap_uint<N>(uint64_t x)
+    {
+        a[0] = x & 0xFFFFFFFF;
+        a[1] = (x >> 32);
     }
 
     ap_uint<N>(int x)
@@ -111,6 +117,7 @@ public:
             overflow = (a[idx] == UINT32_MAX);
             a[idx] += 1;
         }
+        return *this;
     }
 
     ap_uint<N> operator--(int)
@@ -123,25 +130,28 @@ public:
             underflow = (a[0] == 0);
             a[idx] = UINT32_MAX;
         }
+        return *this;
     }
 
     ap_uint<N> operator+=(const ap_uint<N> &y)
     {
-        return *this + y;
+        *this = *this + y;
+        return *this;
     }
 
     ap_uint<N> operator-=(const ap_uint<N> &y)
     {
-        return *this - y;
+        *this = *this - y;
+        return *this;
     }
 
     ap_uint<N> operator-(const ap_uint<N> &y)
     {
 #ifdef TEST
         if (*this < y) {
-            printf("\nInvalid sub: a < b! x");
-            // this->print();
-            // print(y);
+            printf("\nInvalid sub: a < b!\n");
+            this->print();
+            print(y);
         }
 #endif
         ap_uint<N> z;
@@ -158,69 +168,67 @@ public:
     {
         ap_uint<N> z;
         uint64_t overflow = 0;
-        for (int idx = 0; idx < 0; idx++) {
-            uint64_t tmp = overflow;
+        for (int idx = 0; idx < size; idx++) {
+            uint64_t tmp = overflow;            
             for (int k = 0; k <= idx; k++) {
-                tmp = tmp + a[k] * y.a[idx - k]; 
-            }
-            if (tmp > UINT32_MAX) {
-                z.a[idx] = UINT32_MAX;
-                overflow = tmp - UINT32_MAX;
-            }
-            else {
-                z.a[idx] = (uint32_t)tmp;
-                overflow = 0;
-            }
-        }
+                tmp = tmp + (uint64_t)a[k] * (uint64_t)y.a[idx - k]; 
+            }            
+            z.a[idx] = (tmp & 0xFFFFFFFF);
+            overflow = (tmp >> 32);            
+        }        
         return z;
     }
 
     ap_uint<N> operator<<(const int &y)
     {
+        if (y == 0)
+            return *this;
         ap_uint<N> z;
         int idx = y / 32;
         int sht = y % 32;
         for (int i = 0; i < idx; i++)
         {
-            a[i] = 0;
+            z.a[i] = 0;
         }
         uint32_t prev = 0;
         for (int i = idx; i < size; i++)
-        {
-            uint32_t tmp = a[i];
-            a[i] = (a[i] << sht) | prev;
-            prev = (a[i] >> (32 - sht));
+        {            
+            z.a[i] = (a[i-idx] << sht) | prev;
+            prev = (a[i-idx] >> (32 - sht));
         }
         return z;
     }
 
     ap_uint<N> operator>>(const int &y)
     {
+        if (y == 0)
+            return *this;
         ap_uint<N> z;
         int idx = y / 32;
         int sht = y % 32;
-        for (int i = size; i > idx; i--)
+        for (int i = size - 1; i > size - 1 - idx; i--)
         {
-            a[i] = 0;
+            z.a[i] = 0;
         }
         uint32_t prev = 0;
-        for (int i = idx; i >= 0; i--)
-        {
-            uint32_t tmp = a[i];
-            a[i] = (a[i] >> sht) | prev;
-            prev = (a[i] << (32 - sht));
+        for (int i = size - 1 - idx; i >= 0; i--)
+        {            
+            z.a[i] = (a[i+idx] >> sht) | prev;
+            prev = (a[i+idx] << (32 - sht));
         }
         return z;
     }
 
     ap_uint<N> operator<<=(const int &y)
     {
-        return *this << y;
+        *this = *this << y;
+        return *this;
     }
 
     ap_uint<N> operator>>=(const int &y)
     {
-        return *this >> y;
+       *this = *this >> y;
+        return *this;
     }
     /*
         ap_uint<N> operator&(const ap_uint<N> &y)

@@ -1,5 +1,7 @@
 #ifdef TEST
 #include <stdio.h>
+#include <time.h>
+#include <stdlib.h>
 #endif
 
 #include "ap_int.h"
@@ -55,7 +57,7 @@ ap_uint<N> monProduct(ap_uint<N> opA, ap_uint<N> opB, ap_uint<N> opM)
 }
 
 template <int N>
-ap_uint<N> modularInv(ap_uint<N> opA, ap_uint<N> opM)
+ap_uint<N> modularInv_v1(ap_uint<N> opA, ap_uint<N> opM)
 {
     // calc r = opA^-1 * 2^k and k
     ap_uint<N> u = opM;
@@ -65,26 +67,26 @@ ap_uint<N> modularInv(ap_uint<N> opA, ap_uint<N> opM)
     ap_uint<32> k = 0;
 
     while (v > 0)
-    {
+    {        
         if (u[0] == 0)
-        {
+        {            
             u >>= 1;
             s <<= 1;
         }
         else if (v[0] == 0)
-        {
-            v >>= 1;
+        {            
+            v = v >> 1;
             r <<= 1;
         }
         else if (u > v)
-        {
+        {            
             u -= v;
             u >>= 1;
             r += s;
             s <<= 1;
         }
         else
-        {
+        {        
             v -= u;
             v >>= 1;
             s += r;
@@ -127,7 +129,7 @@ ap_uint<N> modularInv(ap_uint<N> opA, ap_uint<N> opM)
 }
 
 template <int N>
-ap_uint<N> modularInv_v2(ap_uint<N> opA, ap_uint<N> opM)
+ap_uint<N> modularInv(ap_uint<N> opA, ap_uint<N> opM)
 {
     // calc r = opA^-1 * 2^k and k
     ap_uint<N> u = opA;
@@ -148,7 +150,7 @@ ap_uint<N> modularInv_v2(ap_uint<N> opA, ap_uint<N> opM)
             }
             else
             {
-                x1 = (opM2 + x1) >> 1;
+                x1 = (opM + x1) >> 1;
             }
         }
         while (v[0] == 0)
@@ -160,7 +162,7 @@ ap_uint<N> modularInv_v2(ap_uint<N> opA, ap_uint<N> opM)
             }
             else
             {
-                x2 = (opM2 + x2) >> 1;
+                x2 = (opM + x2) >> 1;
             }
         }
         if (u >= v)
@@ -172,7 +174,10 @@ ap_uint<N> modularInv_v2(ap_uint<N> opA, ap_uint<N> opM)
             }
             else
             {
-                x1 = (x1 - x2) + opM;
+                while (x1 < x2)
+                    x1 = x1 + opM;
+                x1 = x1 - x2;
+                // x1 = (x1 + opM) - x2;
             }
         }
         else
@@ -184,7 +189,10 @@ ap_uint<N> modularInv_v2(ap_uint<N> opA, ap_uint<N> opM)
             }
             else
             {
-                x2 = (x2 - x1) + opM;
+                while (x2 < x1)
+                    x2 = x2 + opM;
+                x2 = x2 - x1;
+                // x2 = (x2 + opM) - x1;
             }
         }
     }
@@ -405,6 +413,8 @@ ap_uint<8> verify(ap_uint<256> r, ap_uint<256> s, ap_uint<256> hash, ap_uint<256
             z -= n;
         }
 
+printf("here\n");
+
         ap_uint<256> sInv = modularInv<256>(s, n);
 
         ap_uint<256> u1 = productMod_n(sInv, z);
@@ -416,6 +426,9 @@ ap_uint<8> verify(ap_uint<256> r, ap_uint<256> s, ap_uint<256> hash, ap_uint<256
 
         ap_uint<256> x, y;
         add(t1x, t1y, t2x, t2y, x, y);
+
+        r.print();
+        x.print();
 
         if (x == 0 && y == 0)
         {
@@ -439,6 +452,156 @@ ap_uint<8> verify(ap_uint<256> r, ap_uint<256> s, ap_uint<256> hash, ap_uint<256
 }
 
 #ifdef TEST
+
+#define TEST_LOOPS 1000
+
+void test_add()
+{
+    srand(time(NULL));
+    uint64_t ua, ub;
+
+    for (int i = 0; i < TEST_LOOPS; i++)
+    {
+        ua = (uint64_t)UINT32_MAX + 10 * rand();
+        ub = (uint64_t)UINT32_MAX + 7 * rand();
+        ap_uint<64> aa = ap_uint<64>(ua);
+        ap_uint<64> ab = ap_uint<64>(ub);
+        aa = aa + ab;
+        ua = ua + ub;
+        ap_uint<64> ac = ap_uint<64>(ua);
+        if (ac != aa)
+        {
+            printf("Invalid ADD result.\n");
+            return;
+        }
+    }
+    printf("All ADDs are valid.\n");
+}
+
+void test_sub()
+{
+    srand(time(NULL));
+    uint64_t ua, ub;
+
+    for (int i = 0; i < TEST_LOOPS; i++)
+    {
+        ua = UINT32_MAX + 10 * rand();
+        ub = ua - 7;
+        ap_uint<64> aa = ap_uint<64>(ua);
+        ap_uint<64> ab = ap_uint<64>(ub);
+        aa = aa - ab;
+        ua = ua - ub;
+        ap_uint<64> ac = ap_uint<64>(ua);
+        if (ac != aa)
+        {
+            printf("Invalid SUB result.\n");
+            return;
+        }
+    }
+    printf("All SUBs are valid.\n");
+}
+
+void test_mul()
+{
+    srand(time(NULL));
+    uint64_t ua, ub, uc;
+
+    for (int i = 0; i < TEST_LOOPS; i++)
+    {
+        ua = UINT32_MAX + 10 * rand();
+        ub = UINT32_MAX + 7 * rand();
+        ap_uint<64> aa = ap_uint<64>(ua);
+        ap_uint<64> ab = ap_uint<64>(ub);
+        aa = aa * ab;
+        uc = ua * ub;
+        ap_uint<64> ac = ap_uint<64>(uc);
+        if (ac != aa)
+        {
+            printf("Invalid MUL result: %lx * %lx = %lx\n", ua, ub, uc);
+            aa.print();
+            return;
+        }
+    }
+    printf("All MULs are valid.\n");
+}
+
+void test_shl()
+{
+    srand(time(NULL));
+    uint64_t ua, ub;
+
+    for (int i = 0; i < TEST_LOOPS; i++)
+    {
+        ua = UINT32_MAX + 67345 * rand();
+        ap_uint<64> aa = ap_uint<64>(ua);
+        int r = rand() % 64;
+        ap_uint<64> ab = aa << r;
+        ub = ua << r;
+        ap_uint<64> ac = ap_uint<64>(ub);
+        if (ac != ab)
+        {
+            printf("Invalid Shift Left result: %lx << %d = %lx\n", ua, r, ub);
+            aa.print();
+            ab.print();
+            return;
+        }
+    }
+    printf("All Shift Left are valid.\n");
+}
+
+void test_shr()
+{
+    srand(time(NULL));
+    uint64_t ua, ub;
+
+    for (int i = 0; i < TEST_LOOPS; i++)
+    {
+        ua = UINT32_MAX + 67345 * rand();
+        ap_uint<64> aa = ap_uint<64>(ua);
+        int r = rand() % 64;
+        ap_uint<64> ab = aa >> r;
+        ub = ua >> r;
+        ap_uint<64> ac = ap_uint<64>(ub);
+        if (ac != ab)
+        {
+            printf("Invalid Shift Right result: %lx >> %d = %lx\n", ua, r, ub);
+            aa.print();
+            ab.print();
+            return;
+        }
+    }
+    printf("All Shift Right are valid.\n");
+}
+
+void test_gtlt()
+{
+    srand(time(NULL));
+    uint64_t ua, ub;
+
+    for (int i = 0; i < TEST_LOOPS; i++)
+    { 
+        ua = 3 * (uint64_t)UINT32_MAX; // + (uint64_t)(90 * rand());
+        ub = 2 * (uint64_t)UINT32_MAX; // + (uint64_t)(70 * rand());
+        ap_uint<64> aa = ap_uint<64>(ua);
+        ap_uint<64> ab = ap_uint<64>(ub);
+
+        if ((ua >= ub) && (aa < ab || aa <= ab)) {
+            printf("Invalid < or <=\n");
+            aa.print();
+            ab.print();
+            return;
+        }
+
+        if ((ua >= ub) && (ab > aa || ab >= aa)) {
+            printf("Invalid > or >=\n%lx %lx\n", ua, ub);
+            aa.print();
+            ab.print();
+            return;
+        }
+    }
+    printf("All <,>,<=,>= are valid.\n");
+}
+
 int main()
 {
     // ap_uint<256> r = ap_uint<256>("9852734EFFF86C8D38A71D3D5F33E5F6804A5F98594DB4B2AB7A6A48651F7022");
@@ -446,7 +609,7 @@ int main()
     // ap_uint<256> h = ap_uint<256>("9230175B13981DA14D2F3334F321EB78FA0473133F6DA3DE896FEB22FB258936");
     // ap_uint<256> px = ap_uint<256>("C7B15D2BDF22B4351ECD30E7EEDF120124496A68B2280018CA817D1786F191B4");
     // ap_uint<256> py = ap_uint<256>("B5B5025F28B9DC46339F0C342DCEEC5F7F36E3EF77E0336657D5C215975368FE");
-    
+
     ap_uint<256> r = ap_uint<256>("7E5790FC5C01FA6622DDEAF38A0CF83D9A43EA3F9C18EDECD6F6F9424B619DBB");
     ap_uint<256> s = ap_uint<256>("4232D32296B01568889322A7C2434D573BE61BC91EA81FED998CC6CEDE3109A4");
     ap_uint<256> h = ap_uint<256>("BB0E1853B125071FDA800F1581AE63B351CBD874D55636AA846C0D58B82592AC");
@@ -460,20 +623,27 @@ int main()
     py.print();
     n.print();
 
-    ap_uint<256> c1 = ap_uint<256>("7");
+    ap_uint<256> c1 = ap_uint<256>("2");
     ap_uint<256> c2 = ap_uint<256>("4");
 
-    // c1 = c1 >> 1;
-    // c2 = c2 >> 1;
     c1.print();
     c2.print();
+    // c1 = c1 >> 1;
+    // c2 = c2 << 1;
+    // c1.print();
+    // c2.print();
     ap_uint<256> c3 = c2 * c1;
     c3.print();
 
     ap_uint<8> res = verify(r, s, h, px, py);
-
     res.print();
+    // printf("Result %d\n", res[0]);
 
-    printf("Result %d\n", res[0]);
+    test_add();
+    test_sub();
+    test_mul();
+    test_shl();
+    test_shr();
+    test_gtlt();
 }
 #endif
