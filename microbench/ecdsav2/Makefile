@@ -1,4 +1,15 @@
 CXX = g++
+NVCC = nvcc
 
 kernel-cpu: kernel_secp256k1.cpp
-	$(CXX) -g -DTEST $^ -o $@
+	rm -f kernel-cpu
+	$(CXX) -g -DTEST $^ -o $@ -lgmp
+
+kernel-gpu: kernel_secp256k1.cu
+	$(NVCC) -I/home/dumi/git/CGBN/include -arch=sm_50 $^ -o $@ -lgmp
+
+# Debug
+# $(NVCC) -I/home/dumi/git/CGBN/include -arch=sm_50 -lineinfo $^ -o $@ -lgmp
+
+clean:
+	rm -f kernel-cpu
