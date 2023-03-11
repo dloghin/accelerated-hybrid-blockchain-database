@@ -77,6 +77,8 @@ func main() {
 	// fmt.Println(hex.EncodeToString(signature[:32]))
 	// fmt.Println(hex.EncodeToString(signature[32:64]))
 
+	latency := 0.0
+	batches := 0
 	start := time.Now()
 	for i := 0; i < N; i++ {
 		copy(pkeys[idx*64:(idx+1)*64], pubkey[1:])
@@ -87,7 +89,10 @@ func main() {
 			pkptr := (*C.uchar)(unsafe.Pointer(&pkeys[0]))
 			dptr := (*C.uchar)(unsafe.Pointer(&digests[0]))
 			sptr := (*C.uchar)(unsafe.Pointer(&signatures[0]))
+			start1 := time.Now()
 			C.run_kernel(cbatch, pkptr, dptr, sptr)
+			latency += time.Since(start1).Seconds()
+			batches++
 			// fmt.Printf("Size %v Offset %d\n", size, offset)
 			// res := C.GoBytes(unsafe.Pointer(C.run_kernel(cbatch, pkptr, dptr, sptr)), cbatch);
 			// for j := 0; j < batch; j++ {
@@ -113,6 +118,7 @@ func main() {
 	fmt.Printf("Throughput to handle %v requests: %v req/s\n",
 		N, int64(float64(N)/delta),
 	)
+	fmt.Printf("Latency per batch: %v s\n", latency/float64(batches));
 
 	if *saveResults {
 		outFile.Close();
