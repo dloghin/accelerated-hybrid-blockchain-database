@@ -452,7 +452,7 @@ __device__ int verify(ap_uint<256> r, ap_uint<256> s, ap_uint<256> hash, ap_uint
 
 __global__ void verify_batch(cgbn_error_report_t *report, packet_t *data, int *res)
 {
-    int tid = threadIdx.x;
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
     context_t bn_context(cgbn_report_monitor, report, tid); // construct a context
     env_t bn_env(bn_context.env<env_t>());                  // construct an environment
     cgbn_env[tid] = &bn_env;
@@ -474,7 +474,7 @@ __global__ void verify_batch(cgbn_error_report_t *report, packet_t *data, int *r
 
 __global__ void verify_batch_v2(cgbn_error_report_t *report, unsigned char* pkeys, unsigned char* digests, unsigned char* signatures, unsigned char* res)
 {
-    int tid = threadIdx.x;
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
     context_t bn_context(cgbn_report_monitor, report, tid); // construct a context
     env_t bn_env(bn_context.env<env_t>());                  // construct an environment
     cgbn_env[tid] = &bn_env;
@@ -523,7 +523,7 @@ unsigned char* run_kernel(int batch_size, unsigned char* pkeys, unsigned char* d
     CHECKCUDAERR(cudaMemcpy(gpu_digests, digests, 32 * batch_size, cudaMemcpyHostToDevice));
     CHECKCUDAERR(cudaMemcpy(gpu_signatures, signatures, 64 * batch_size, cudaMemcpyHostToDevice));
     
-    verify_batch_v2<<<1, batch_size>>>(gpu_report, gpu_pkeys, gpu_digests, gpu_signatures, gpu_res);
+    verify_batch_v2<<<batch_size/TPB, TPB>>>(gpu_report, gpu_pkeys, gpu_digests, gpu_signatures, gpu_res);
     // CHECKCUDAERR(cudaGetLastError());
     
     // transfer GPU -> CPU
@@ -602,7 +602,7 @@ int main()
     {
         printf("Err: %d\n", cpu_err);
     }
-    verify_batch<<<1, BATCH>>>(report, gpu_data, gpu_res);
+    verify_batch<<<BATCH/TPB, TPB>>>(report, gpu_data, gpu_res);
     CHECKCUDAERR(cudaGetLastError());
     CHECKCUDAERR(cudaMemcpy(cpu_res, gpu_res, BATCH * sizeof(int), cudaMemcpyDeviceToHost));     
 

@@ -5,7 +5,8 @@
 
 #define TPI 1
 #define BITS 512
-#define BATCH 128
+#define BATCH 4096
+#define TPB 64
 
 typedef cgbn_context_t<TPI> context_t;
 typedef cgbn_env_t<context_t, BITS> env_t;

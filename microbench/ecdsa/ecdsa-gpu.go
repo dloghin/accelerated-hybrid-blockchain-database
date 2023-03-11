@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 	"os"
-	"encoding/hex"
-	"strings"
+//	"encoding/hex"
+//	"strings"
 	"unsafe"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	keyFilePrefix = kingpin.Flag("key-file", "Prefix of Key Files").Required().String()	
+	keyFilePrefix = kingpin.Flag("key-file", "Prefix of Key Files").Required().String()
 	saveResults   = kingpin.Flag("save", "Save digests to output-cpu.txt").Default("false").Bool()
 )
 
@@ -49,9 +49,8 @@ func main() {
 		fmt.Println(err)
 	}
 
-	N := 1280	
 	var outFile *os.File
-	if *saveResults {				
+	if *saveResults {
 		outFile, err = os.Create("output-cpu.txt")
 		if err != nil {
 			fmt.Printf("Error creating output file: %v\n", err)
@@ -59,23 +58,24 @@ func main() {
 	}
 
 	// init GPU - batch 128
-	batch := 256
+	batch := 8192
+	N := batch * 50
 	cbatch := C.int(batch)
 	C.init_gpu(cbatch)
 	pkeys := make([]byte, 64 * batch)
-	digests := make([]byte, 32 * batch)	
+	digests := make([]byte, 32 * batch)
 	signatures := make([]byte, 64 * batch)
 	idx := 0
 
 	// pkx := strings.ToUpper(pvk.PublicKey.X.Text(16))
 	// pky := strings.ToUpper(pvk.PublicKey.Y.Text(16))
-	pkx := pvk.PublicKey.X.Text(16)
-	pky := pvk.PublicKey.Y.Text(16)
-	fmt.Println(pkx)
-	fmt.Println(pky)
-	fmt.Println(hex.EncodeToString(dig))
-	fmt.Println(hex.EncodeToString(signature[:32]))
-	fmt.Println(hex.EncodeToString(signature[32:64]))
+	// pkx := pvk.PublicKey.X.Text(16)
+	// pky := pvk.PublicKey.Y.Text(16)
+	// fmt.Println(pkx)
+	// fmt.Println(pky)
+	// fmt.Println(hex.EncodeToString(dig))
+	// fmt.Println(hex.EncodeToString(signature[:32]))
+	// fmt.Println(hex.EncodeToString(signature[32:64]))
 
 	start := time.Now()
 	for i := 0; i < N; i++ {
@@ -85,18 +85,19 @@ func main() {
 		idx++
 		if idx == batch {
 			pkptr := (*C.uchar)(unsafe.Pointer(&pkeys[0]))
-			dptr := (*C.uchar)(unsafe.Pointer(&digests[0]))			
+			dptr := (*C.uchar)(unsafe.Pointer(&digests[0]))
 			sptr := (*C.uchar)(unsafe.Pointer(&signatures[0]))
-			// C.run_kernel(cbatch, pkptr, dptr, sptr)
+			C.run_kernel(cbatch, pkptr, dptr, sptr)
 			// fmt.Printf("Size %v Offset %d\n", size, offset)
-			res := C.GoBytes(unsafe.Pointer(C.run_kernel(cbatch, pkptr, dptr, sptr)), cbatch);
-			for j := 0; j < batch; j++ {
-				fmt.Printf("%d ", res[j])
+			// res := C.GoBytes(unsafe.Pointer(C.run_kernel(cbatch, pkptr, dptr, sptr)), cbatch);
+			// for j := 0; j < batch; j++ {
+			//	fmt.Printf("%d ", res[j])
 			// 	if res[j] != 1 {
 			// 		fmt.Println("Invalid verification!")
 			// 	}
-			}
-			fmt.Println()
+			// }
+			// fmt.Println()
+			/*
 			if *saveResults {
 				px := strings.ToUpper(pvk.PublicKey.X.Text(16))
 				py := strings.ToUpper(pvk.PublicKey.Y.Text(16))
@@ -104,6 +105,7 @@ func main() {
 					outFile.WriteString(px + " " + py + " " + strings.ToUpper(hex.EncodeToString(digests[j*32:(j+1)*32])) + " " + strings.ToUpper(hex.EncodeToString(signatures[j*64:(j+1)*64])) + "\n")
 				}
 			}
+			*/
 			idx = 0
 		}
 	}
