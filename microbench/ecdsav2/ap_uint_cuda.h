@@ -22,6 +22,21 @@ typedef struct
 static const unsigned char cpu_hex2str[6] = {0xA, 0xB, 0xC, 0xD, 0xE, 0xF};
 __device__ __constant__ unsigned char gpu_hex2str[6] = {0xA, 0xB, 0xC, 0xD, 0xE, 0xF};
 
+__host__ __device__ void byte_to_cgbn_mem_t(cgbn_mem_t<BITS> *addr, const unsigned char *data, int size)
+{
+    for (int i = 0; i < sizeof(addr->_limbs) / sizeof(addr->_limbs[0]); i++)
+    {
+        addr->_limbs[i] = 0;
+    }
+    int sht = 24;
+    for (int i = 0; i < size; i++)
+    {
+        int idx1 = (size - i - 1) / 4; // array index
+        addr->_limbs[idx1] |= ((uint32_t)data[i]) << sht;
+        sht = (sht == 0) ? 24 : sht - 8;
+    }
+}
+
 __host__ __device__ void str_to_cgbn_mem_t(cgbn_mem_t<BITS> *addr, const char *str)
 {
     const unsigned char *hex2str = NULL;
@@ -36,11 +51,12 @@ __host__ __device__ void str_to_cgbn_mem_t(cgbn_mem_t<BITS> *addr, const char *s
     {
         ptr++;
     }
-    int l = ptr - str;  // string size   
-    int sht = 0; // shift factor
-    for (int i = 0; i < sizeof(addr->_limbs) / sizeof(addr->_limbs[0]); i++) {
+    int l = ptr - str; // string size
+    int sht = 0;       // shift factor
+    for (int i = 0; i < sizeof(addr->_limbs) / sizeof(addr->_limbs[0]); i++)
+    {
         addr->_limbs[i] = 0;
-    }    
+    }
     for (int j = 0, i = l - 1; i >= 0; i--, j++)
     {
         uint32_t v = (uint32_t)(str[i] - '0');
@@ -54,11 +70,11 @@ __host__ __device__ void str_to_cgbn_mem_t(cgbn_mem_t<BITS> *addr, const char *s
             {
                 v = (uint32_t)hex2str[(int)(str[i] - 'A')];
             }
-        }        
+        }
         int idx1 = j / 8; // array index
         addr->_limbs[idx1] |= (v << sht);
         sht = (sht + 4) % 32;
-    }    
+    }
 }
 
 __host__ void print_bn(cgbn_mem_t<BITS> *a)
@@ -85,7 +101,7 @@ __host__ inline void checkCudaError(cudaError_t code, const char *file, int line
         checkCudaError((ans), __FILE__, __LINE__); \
     }
 
-__device__ env_t *cgbn_env[BATCH];
+__device__ env_t **cgbn_env;
 
 template <int N>
 class ap_uint
@@ -137,6 +153,13 @@ public:
     {
         cgbn_mem_t<BITS> mem;
         str_to_cgbn_mem_t(&mem, str);
+        cgbn_load(*bn_env, a, &mem);
+    }
+
+    __device__ ap_uint<N>(const unsigned char *data, int size)
+    {
+        cgbn_mem_t<BITS> mem;
+        byte_to_cgbn_mem_t(&mem, data, size);
         cgbn_load(*bn_env, a, &mem);
     }
 
@@ -302,7 +325,7 @@ public:
     {
         // env_t::cgbn_t tmp1, tmp2;
         // uint32_t size = (uint32_t)(end - start + 1);
-        // cgbn_extract_bits(*bn_env, tmp1, a, 0, start);        
+        // cgbn_extract_bits(*bn_env, tmp1, a, 0, start);
         // cgbn_shift_right(*bn_env, tmp2, a, end+1);
         // cgbn_shift_left(*bn_env, a, tmp2, end+1);
         // cgbn_bitwise_ior(*bn_env, a, tmp1, a);

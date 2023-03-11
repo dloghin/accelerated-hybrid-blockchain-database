@@ -6,11 +6,13 @@ __device__ ap_uint<256> *n;  // = ap_uint<256>("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE
 __device__ ap_uint<256> *Gx; // = ap_uint<256>("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798");
 __device__ ap_uint<256> *Gy; // = ap_uint<256>("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8");
 
-__global__ void init_gpu(cgbn_error_report_t *report, cudaError_t *err)
+__global__ void init_gpu_env(cgbn_error_report_t *report, int batch_size)
 {
     int tid = threadIdx.x;
     if (tid > 0)
         return;
+
+    cgbn_env = new env_t*[batch_size];
 
     context_t bn_context(cgbn_report_monitor, report, tid); // construct a context
     env_t bn_env(bn_context.env<env_t>());                  // construct an environment
@@ -23,7 +25,7 @@ __global__ void init_gpu(cgbn_error_report_t *report, cudaError_t *err)
     Gy = new ap_uint<256>("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8");
 }
 
-__global__ void destroy_gpu()
+__global__ void destroy_gpu_env()
 {
     int tid = threadIdx.x;
     if (tid > 0)
@@ -176,9 +178,6 @@ __device__ ap_uint<N> addMod(ap_uint<N> opA, ap_uint<N> opB, ap_uint<N> opM)
     return sum.range(N-1, 0);
 }
 
-// TODO remove
-__device__ ap_uint<512>* muls;
-
 __device__ ap_uint<256> productMod_p4(ap_uint<256> a, ap_uint<256> b)
 {
     ap_uint<128> aH = a.range(255, 128);
@@ -193,7 +192,6 @@ __device__ ap_uint<256> productMod_p4(ap_uint<256> a, ap_uint<256> b)
     ap_uint<512> mid = aLbH + aHbL;
 
     ap_uint<512> mul = (aHbH << 256) + (mid << 128) + aLbL;
-    // *muls = mul;
     ap_uint<256> P = ap_uint<256>("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
     ap_uint<256> c0 = mul.range(255, 0);
     ap_uint<256> c1 = mul.range(511, 256);
@@ -213,7 +211,6 @@ __device__ ap_uint<256> productMod_p4(ap_uint<256> a, ap_uint<256> b)
 
     ap_uint<256> s1 = c1.range(255, 252) + c1.range(255, 250) + c1.range(255, 249) + c1.range(255, 248) +
                       c1.range(255, 247) + c1.range(255, 224);
-
     
     ap_uint<256> k11 = (s1 << 2) + (s1 << 1) + s1;
     ap_uint<256> k = (s1 << 32) + (k11 << 7) + (s1 << 6) + (s1 << 4) + s1;
@@ -221,15 +218,12 @@ __device__ ap_uint<256> productMod_p4(ap_uint<256> a, ap_uint<256> b)
     ap_uint<256> tmp;
     tmp = addMod(k, c0, P);    
     tmp = addMod(tmp, w1, P);
-    // *muls = w1;
     tmp = addMod(tmp, w2, P);
     tmp = addMod(tmp, w3, P);
     tmp = addMod(tmp, w4, P);
     tmp = addMod(tmp, w5, P);
     tmp = addMod(tmp, w6, P);
     tmp = addMod(tmp, c1, P);
-
-    // *muls = tmp;
 
     if (tmp >= P)
     {
@@ -456,7 +450,7 @@ __device__ int verify(ap_uint<256> r, ap_uint<256> s, ap_uint<256> hash, ap_uint
     }
 }
 
-__global__ void verify_batch(cgbn_error_report_t *report, packet_t *data, int *res, cgbn_mem_t<BITS> *ru1, cgbn_mem_t<BITS> *ru2)
+__global__ void verify_batch(cgbn_error_report_t *report, packet_t *data, int *res)
 {
     int tid = threadIdx.x;
     context_t bn_context(cgbn_report_monitor, report, tid); // construct a context
@@ -478,13 +472,80 @@ __global__ void verify_batch(cgbn_error_report_t *report, packet_t *data, int *r
     res[tid] = verify(r, s, h, px, py);    
 }
 
-// #ifdef TEST
+__global__ void verify_batch_v2(cgbn_error_report_t *report, unsigned char* pkeys, unsigned char* digests, unsigned char* signatures, unsigned char* res)
+{
+    int tid = threadIdx.x;
+    context_t bn_context(cgbn_report_monitor, report, tid); // construct a context
+    env_t bn_env(bn_context.env<env_t>());                  // construct an environment
+    cgbn_env[tid] = &bn_env;
+
+    assert(a != NULL);
+    assert(p != NULL);
+    assert(n != NULL);
+    assert(Gx != NULL);
+    assert(Gy != NULL);
+
+    ap_uint<256> r = ap_uint<256>(&signatures[tid * 64], 32);
+    ap_uint<256> s = ap_uint<256>(&signatures[tid * 64 + 32], 32);
+    ap_uint<256> h = ap_uint<256>(&digests[tid * 32], 32);
+    ap_uint<256> px = ap_uint<256>(&pkeys[tid * 64], 32);
+    ap_uint<256> py = ap_uint<256>(&pkeys[tid * 64 + 32], 32);
+
+    res[tid] = (unsigned char)verify(r, s, h, px, py);    
+}
+
+#ifdef GO_LIB
+
+#include "secp256k1_gpu.h"
+
+unsigned char *gpu_pkeys, *gpu_digests, *gpu_signatures, *gpu_res;
+cgbn_error_report_t *gpu_report;
+unsigned char *cpu_res;
+
+void init_gpu(int batch_size)
+{
+    cpu_res = (unsigned char *)malloc(batch_size);
+
+    CHECKCUDAERR(cgbn_error_report_alloc(&gpu_report));
+    CHECKCUDAERR(cudaMalloc(&gpu_pkeys, 64 * batch_size));
+    CHECKCUDAERR(cudaMalloc(&gpu_digests, 32 * batch_size));
+    CHECKCUDAERR(cudaMalloc(&gpu_signatures, 64 * batch_size));
+    CHECKCUDAERR(cudaMalloc(&gpu_res, batch_size));    
+
+    init_gpu_env<<<1, 1>>>(gpu_report, batch_size);
+    // CHECKCUDAERR(cudaGetLastError());
+}
+
+unsigned char* run_kernel(int batch_size, unsigned char* pkeys, unsigned char* digests, unsigned char* signatures)
+{
+    // transfer CPU -> GPU
+    CHECKCUDAERR(cudaMemcpy(gpu_pkeys, pkeys, 64 * batch_size, cudaMemcpyHostToDevice));
+    CHECKCUDAERR(cudaMemcpy(gpu_digests, digests, 32 * batch_size, cudaMemcpyHostToDevice));
+    CHECKCUDAERR(cudaMemcpy(gpu_signatures, signatures, 64 * batch_size, cudaMemcpyHostToDevice));
+    
+    verify_batch_v2<<<1, batch_size>>>(gpu_report, gpu_pkeys, gpu_digests, gpu_signatures, gpu_res);
+    // CHECKCUDAERR(cudaGetLastError());
+    
+    // transfer GPU -> CPU
+    CHECKCUDAERR(cudaMemcpy(cpu_res, gpu_res, batch_size, cudaMemcpyDeviceToHost));    
+
+    return cpu_res;
+}
+
+void free_gpu() 
+{
+    destroy_gpu_env<<<1, 1>>>();
+}
+
+#endif
+
+#ifdef TEST
 
 int main()
 {
-    char r[65] = "2c77652a760723a0ac5b32ba98e206e8eeee8cb285fc49139c4d2eb073ea25c4";    
-    char s[65] = "5ff5cb9a21b5ce7b403d461c88f0938d2404c56bbc88500906e8344f0c46f06c";
-    char h1[65] = "38f300a5a17105effbfd75c0a13e3ad2a4d65353eaf464df64fe4d3b2186aef8";
+    char r[65] = "9852734efff86c8d38a71d3d5f33e5f6804a5f98594db4b2ab7a6a48651f7022";    
+    char s[65] = "7576aed0b12ea1eab03f8d4c39c59ac3c213e20cb9381a3144b37949c151e170";
+    char h1[65] = "9230175b13981da14d2f3334f321eb78fa0473133f6da3de896feb22fb258936";
     char h2[65] = "38f300a5a17105effbfd75c0a13e3ad2a4d65353eaf464df64fe4d3b2186aef9";
     char px[65] = "c7b15d2bdf22b4351ecd30e7eedf120124496a68b2280018ca817d1786f191b4";
     char py[65] = "b5b5025f28b9dc46339f0c342dceec5f7f36e3ef77e0336657d5c215975368fe";
@@ -503,10 +564,7 @@ int main()
     str_to_cgbn_mem_t(&cpu_data2.s, s);
     str_to_cgbn_mem_t(&cpu_data2.h, h2);
     str_to_cgbn_mem_t(&cpu_data2.px, px);
-    str_to_cgbn_mem_t(&cpu_data2.py, py);
-
-    cgbn_mem_t<BITS> *cpu_ru1 = (cgbn_mem_t<BITS> *)malloc(BATCH * sizeof(cgbn_mem_t<BITS>));
-    cgbn_mem_t<BITS> *cpu_ru2 = (cgbn_mem_t<BITS> *)malloc(BATCH * sizeof(cgbn_mem_t<BITS>));
+    str_to_cgbn_mem_t(&cpu_data2.py, py);    
 
     print_bn(&cpu_data1.r);
     print_bn(&cpu_data1.s);
@@ -518,17 +576,12 @@ int main()
     packet_t *gpu_data;
     int *gpu_res;
     cgbn_error_report_t *report;
-    cudaError_t *gpu_err;
-
-    cgbn_mem_t<BITS> *gpu_ru1, *gpu_ru2;
+    cudaError_t *gpu_err;    
 
     CHECKCUDAERR(cgbn_error_report_alloc(&report));
     CHECKCUDAERR(cudaMalloc(&gpu_data, BATCH * sizeof(packet_t)));
     CHECKCUDAERR(cudaMalloc(&gpu_res, BATCH * sizeof(int)));
-    CHECKCUDAERR(cudaMalloc(&gpu_err, sizeof(cudaError_t)));
-
-    CHECKCUDAERR(cudaMalloc(&gpu_ru1, BATCH * sizeof(cgbn_mem_t<BITS>)));
-    CHECKCUDAERR(cudaMalloc(&gpu_ru2, BATCH * sizeof(cgbn_mem_t<BITS>)));
+    CHECKCUDAERR(cudaMalloc(&gpu_err, sizeof(cudaError_t)));    
 
     for (int i = 0; i < BATCH; i++)
     {
@@ -542,22 +595,16 @@ int main()
         }
     }
 
-    init_gpu<<<1, 1>>>(report, gpu_err);
+    init_gpu_env<<<1, 1>>>(report, BATCH);
     CHECKCUDAERR(cudaGetLastError());
     CHECKCUDAERR(cudaMemcpy(&cpu_err, gpu_res, sizeof(cudaError_t), cudaMemcpyDeviceToHost));
     if (cpu_err != cudaSuccess)
     {
         printf("Err: %d\n", cpu_err);
     }
-    verify_batch<<<1, BATCH>>>(report, gpu_data, gpu_res, gpu_ru1, gpu_ru2);
+    verify_batch<<<1, BATCH>>>(report, gpu_data, gpu_res);
     CHECKCUDAERR(cudaGetLastError());
-    CHECKCUDAERR(cudaMemcpy(cpu_res, gpu_res, BATCH * sizeof(int), cudaMemcpyDeviceToHost));
-    CHECKCUDAERR(cudaMemcpy(cpu_ru1, gpu_ru1, BATCH * sizeof(cgbn_mem_t<BITS>), cudaMemcpyDeviceToHost));
-    CHECKCUDAERR(cudaMemcpy(cpu_ru2, gpu_ru2, BATCH * sizeof(cgbn_mem_t<BITS>), cudaMemcpyDeviceToHost));
-
-    printf("\n");
-    print_bn(cpu_ru1);
-    print_bn(cpu_ru2);
+    CHECKCUDAERR(cudaMemcpy(cpu_res, gpu_res, BATCH * sizeof(int), cudaMemcpyDeviceToHost));     
 
     for (int i = 0; i < BATCH; i++)
     {
@@ -565,11 +612,11 @@ int main()
     }
     printf("\n");
 
-    destroy_gpu<<<1, 1>>>();
+    destroy_gpu_env<<<1, 1>>>();
 
     CHECKCUDAERR(cudaFree(gpu_data));
     CHECKCUDAERR(cudaFree(gpu_res));
     CHECKCUDAERR(cudaFree(gpu_err));
     free(cpu_res);
 }
-// #endif
+#endif
