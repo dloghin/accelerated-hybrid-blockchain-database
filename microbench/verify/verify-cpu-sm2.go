@@ -33,7 +33,7 @@ import (
 	"golang.org/x/crypto/sha3"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"hbdb/src/benchmark"	
+	"hbdb/src/benchmark"
 )
 
 type Pair struct {
@@ -44,6 +44,7 @@ var (
 	dataRun       = kingpin.Flag("run-path", "Path of YCSB operation data").Required().String()	
 	concurrency   = kingpin.Flag("nthreads", "Number of threads for each driver").Default("10").Int()
 	saveResults   = kingpin.Flag("save", "Save digests to output-cpu.txt").Bool()
+	keyFilePrefix = kingpin.Flag("key-file", "Prefix of Key Files").Required().String()
 )
 
 type KeccakState interface {
@@ -71,6 +72,7 @@ func mySm2Verify(pub *sm2.PublicKey, msg, sig []byte) bool {
 
 func main() {
 	kingpin.Parse()
+	*keyFilePrefix = ""
 
 	// generate key
 	pvk, err := sm2.GenerateKey(rand.Reader)

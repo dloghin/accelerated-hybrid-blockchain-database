@@ -16,18 +16,20 @@
 
 package main
 
-// #cgo LDFLAGS: -L/home/dumi/git/hbdb_ecdsa/microbench -lkeccak
-// #include "keccak.h"
-// import "C"
+// #cgo CFLAGS: -I../../accelerator/gpu_cuda
+// #cgo LDFLAGS: -L../../accelerator/gpu_cuda -lacc-gpu
+// #include "header_gpu.h"
+import "C"
 
 import (
-	"encoding/hex"
+	// "encoding/hex"
 	"fmt"
 	"hash"
 	"os"
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
@@ -45,8 +47,7 @@ type Pair struct {
 
 var (
 	dataRun       = kingpin.Flag("run-path", "Path of YCSB operation data").Required().String()
-	keyFilePrefix = kingpin.Flag("key-file", "Prefix of key files").Required().String()
-	concurrency   = kingpin.Flag("nthreads", "Number of threads for each driver").Default("10").Int()
+	keyFilePrefix = kingpin.Flag("key-file", "Prefix of key files").Required().String()	
 	saveResults   = kingpin.Flag("save", "Save digests to output-cpu.txt").Bool()
 )
 
@@ -116,39 +117,65 @@ func main() {
 	}()
 	time.Sleep(5 * time.Second)
 
+	// init GPU - batch 128
+	batch := 8192	
+	cbatch := C.int(batch)
+	C.init_gpu(cbatch)
+	pkeys := make([]byte, 64 * batch)
+	signatures := make([]byte, 64 * batch)
+	messages := make([]byte, 1024 * batch)
+	lengths := make([]C.int, batch)
+	idx := 0
+	nreq := 0
+
+
 	fmt.Println("Start running ...")
 	if *saveResults {
 		outFile, err := os.Create("output-cpu.txt")
 		if err != nil {
 			fmt.Printf("Error creating output file: %v\n", err)
 		}
+		// TODO
+		/*
 		for pair := range runBuf {
-			dig := myKeccak256(pair.a)
-			res := "0"
-			if secp256k1.VerifySignature(pubkey, dig, pair.b[:64]) {
-				res = "1"
-			}
+
+			// TODO
+
 			outFile.WriteString(string(pair.a) + "\n")
 			outFile.WriteString(hex.EncodeToString(dig) + " " + hex.EncodeToString(pair.b[:64]) + " " + res + "\n")
 			// outFile.WriteString(hex.EncodeToString(dig) + " " + res + "\n")
 		}
+		*/
 		outFile.Close()
 	} else {
+		latency := 0.0
+		batches := 0
 		start := time.Now()
-		for j := 0; j < *concurrency; j++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for pair := range runBuf {
-					dig := myKeccak256(pair.a)
-					secp256k1.VerifySignature(pubkey, dig, pair.b[:64])
-				}
-			}()
+		
+		for pair := range runBuf {
+		copy(pkeys[idx*64:(idx+1)*64], pubkey[1:])
+		copy(signatures[idx*64:(idx+1)*64], pair.b[:64])
+		copy(messages[idx*1024:(idx+1)*1024], pair.a)
+		lengths[idx] = C.int(len(pair.a))
+		idx++
+		if idx == batch {
+			pkptr := (*C.uchar)(unsafe.Pointer(&pkeys[0]))
+			mptr := (*C.uchar)(unsafe.Pointer(&messages[0]))
+			sptr := (*C.uchar)(unsafe.Pointer(&signatures[0]))
+			lptr := (*C.int)(unsafe.Pointer(&lengths[0]))
+			start1 := time.Now()
+			C.run_keccak_secp256k1(cbatch, pkptr, sptr, mptr, lptr)
+			latency += time.Since(start1).Seconds()
+			batches++
+			idx = 0
+			nreq += batch
 		}
-		wg.Wait()
+	}
+
 		delta := time.Since(start).Seconds()
-		fmt.Printf("Throughput with %v concurrency to handle %v requests: %v req/s\n",
-			*concurrency, reqNum, int64(float64(reqNum.Load())/delta),
+		fmt.Printf("Throughput on GPU to handle %v requests: %v req/s\n",
+			nreq, int64(float64(nreq)/delta),
 		)
+		fmt.Printf("Latency per batch: %v s\n", latency/float64(batches));
 	}
 }
