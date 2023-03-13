@@ -51,6 +51,7 @@ var (
 	dataRun       = kingpin.Flag("run-path", "Path of YCSB operation data").Required().String()
 	keyFilePrefix = kingpin.Flag("key-file", "Prefix of key files").Required().String()
 	saveResults   = kingpin.Flag("save", "Save digests to output-cpu.txt").Bool()
+	batchSize   = kingpin.Flag("batch-size", "Number of threads for each driver").Default("1024").Int()
 )
 
 type KeccakState interface {
@@ -120,7 +121,7 @@ func main() {
 	time.Sleep(5 * time.Second)
 
 	// init GPU - batch 128
-	batch := 1024
+	batch := *batchSize
 	cbatch := C.int(batch)
 	C.init_gpu(cbatch)
 	pkeys := make([]byte, 64*batch)
