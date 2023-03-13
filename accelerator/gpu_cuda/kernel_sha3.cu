@@ -9,7 +9,7 @@
 #include "header_gpu.h"
 #include "cuda_util.h"
 
-#define TPB 512
+#define TPB 128
 
 #ifndef KECCAKF_ROUNDS
 #define KECCAKF_ROUNDS 24
