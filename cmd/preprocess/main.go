@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"strings"
 
@@ -46,6 +47,17 @@ func EncodeVal(val string) string {
 	return string(runes)
 }
 
+func ExtendVal(val string, size int) string {
+	if len(val) >= size {
+		return val[:size-1]
+	}
+	buff := make([]byte, size - len(val))
+	for i := 0; i < size - len(val); i++ {
+		buff[i] = byte(48 + rand.Intn(74))
+	}
+	return val + string(buff)
+}
+
 func LineByLine(m map[string]int64, r io.Reader, w io.Writer) error {
 	br := bufio.NewReader(r)
 	for {
@@ -67,7 +79,12 @@ func LineByLine(m map[string]int64, r io.Reader, w io.Writer) error {
 
 		tokens := strings.SplitN(lineStr, " ", 4)
 		key := tokens[2]
-		val := EncodeVal(tokens[3])
+		var val string
+		if (strings.HasPrefix(lineStr, "INSERT") || strings.HasPrefix(lineStr, "UPDATE")) {
+			val = EncodeVal(ExtendVal(tokens[3], 1024))
+		} else {
+			val = EncodeVal(tokens[3])
+		}
 		ver, exists := m[key]
 
 		if strings.HasPrefix(lineStr, "INSERT") || strings.HasPrefix(lineStr, "UPDATE") {
