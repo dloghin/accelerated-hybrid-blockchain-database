@@ -100,8 +100,8 @@ func main() {
 		defer close(runBuf)
 		if err := benchmark.LineByLine(runFile, func(line string) error {
 			reqNum.Add(1)
-			operands := strings.SplitN(line, " ", 5)			
-			buf := make([]byte, len(operands[3]))		// operands[3] is the value
+			operands := strings.SplitN(line, " ", 5)
+			buf := make([]byte, len(operands[3])) // operands[3] is the value
 			copy(buf, operands[3])
 			msg := myKeccak256(buf)
 			sig, err := secp256k1.Sign(msg, privkey)
@@ -128,9 +128,11 @@ func main() {
 			if secp256k1.VerifySignature(pubkey, dig, pair.b[:64]) {
 				res = "1"
 			}
-			outFile.WriteString(string(pair.a) + "\n")
-			outFile.WriteString(hex.EncodeToString(dig) + " " + hex.EncodeToString(pair.b[:64]) + " " + res + "\n")
-			// outFile.WriteString(hex.EncodeToString(dig) + " " + res + "\n")
+			if res == "1" {
+				outFile.WriteString(string(pair.a) + "\n")
+				// outFile.WriteString(hex.EncodeToString(dig) + " " + hex.EncodeToString(pair.b[:64]) + " " + res + "\n")
+				outFile.WriteString(hex.EncodeToString(pair.b[:64]) + "\n")
+			}
 		}
 		outFile.Close()
 	} else {

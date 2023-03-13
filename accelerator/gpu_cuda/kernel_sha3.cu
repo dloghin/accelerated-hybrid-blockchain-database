@@ -9,6 +9,8 @@
 #include "header_gpu.h"
 #include "cuda_util.h"
 
+#define TPB 512
+
 #ifndef KECCAKF_ROUNDS
 #define KECCAKF_ROUNDS 24
 #endif
@@ -49,14 +51,14 @@ __device__ __constant__ uint64_t gpu_keccakf_rndc[24];
 __device__ __constant__ int gpu_keccakf_rotc[24];
 __device__ __constant__ int gpu_keccakf_piln[24];
 
-sha3_ctx_t* gpu_contexts;
-char* gpu_in;
-int* gpu_inlen;
-int* gpu_offset;
-char* gpu_md;
+sha3_ctx_t *gpu_contexts;
+char *gpu_in;
+int *gpu_inlen;
+int *gpu_offset;
+char *gpu_md;
 
-int* offsets;
-char* out;
+int *offsets;
+char *out;
 
 // update the state with given number of rounds
 
@@ -186,9 +188,10 @@ __device__ void sha3_final(void *md, sha3_ctx_t *c)
 
 // compute a SHA-3 hash (md) of given byte length from "in"
 
-__global__ void sha3(int num, sha3_ctx_t* contexts, const void *in, int *inlen, int *offset, void *md, int mdlen)
+__global__ void sha3(int num, sha3_ctx_t *contexts, const void *in, int *inlen, int *offset, void *md, int mdlen)
 {
-    int const tid = threadIdx.x;
+    // int const tid = threadIdx.x;
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     sha3_init(contexts + tid, mdlen);
     sha3_update(contexts + tid, in + offset[tid], inlen[tid]);
@@ -196,53 +199,65 @@ __global__ void sha3(int num, sha3_ctx_t* contexts, const void *in, int *inlen, 
 }
 
 __host__ void init_gpu_keccak(int num)
-{	
-	CHECKCUDAERR(cudaMemcpyToSymbol(gpu_keccakf_rndc, host_keccakf_rndc, 24 * sizeof(uint64_t)));
-	CHECKCUDAERR(cudaMemcpyToSymbol(gpu_keccakf_rotc, host_keccakf_rotc, 24 * sizeof(int)));
-	CHECKCUDAERR(cudaMemcpyToSymbol(gpu_keccakf_piln, host_keccakf_piln, 24 * sizeof(int)));
-
-	CHECKCUDAERR(cudaMalloc(&gpu_contexts, num * sizeof (sha3_ctx_t)));
-	CHECKCUDAERR(cudaMalloc(&gpu_in, num * 1024));
-	CHECKCUDAERR(cudaMalloc(&gpu_inlen, num * sizeof(int)));
-	CHECKCUDAERR(cudaMalloc(&gpu_offset, num * sizeof(int)));
-	CHECKCUDAERR(cudaMalloc(&gpu_md, num * 32));
-	offsets = (int*)malloc(num * sizeof(int));
-	if (!offsets) {
-		printf("Error in allocating CPU offsets!\n");
-	}
-
-	out = (char*)malloc(num * 32);
-	if (!offsets) {
-                printf("Error in allocating CPU output!\n");
-        }
-}
-
-unsigned char* run_keccak(int batch_size, unsigned char* messages, int* message_lengths)
 {
-    int sum = message_lengths[0];
-	offsets[0] = 0;
-	for (int i = 1; i < batch_size; i++) {
-		offsets[i] = sum;
-		sum += message_lengths[i];
-	}
+    CHECKCUDAERR(cudaMemcpyToSymbol(gpu_keccakf_rndc, host_keccakf_rndc, 24 * sizeof(uint64_t)));
+    CHECKCUDAERR(cudaMemcpyToSymbol(gpu_keccakf_rotc, host_keccakf_rotc, 24 * sizeof(int)));
+    CHECKCUDAERR(cudaMemcpyToSymbol(gpu_keccakf_piln, host_keccakf_piln, 24 * sizeof(int)));
 
-	CHECKCUDAERR(cudaMemcpy(gpu_in, messages, sum, cudaMemcpyHostToDevice));
-	CHECKCUDAERR(cudaMemcpy(gpu_inlen, message_lengths, batch_size * sizeof(int), cudaMemcpyHostToDevice));	
-	CHECKCUDAERR(cudaMemcpy(gpu_offset, offsets, batch_size * sizeof(int), cudaMemcpyHostToDevice));
+    CHECKCUDAERR(cudaMalloc(&gpu_contexts, num * sizeof(sha3_ctx_t)));
+    CHECKCUDAERR(cudaMalloc(&gpu_in, num * 1024));
+    CHECKCUDAERR(cudaMalloc(&gpu_inlen, num * sizeof(int)));
+    CHECKCUDAERR(cudaMalloc(&gpu_offset, num * sizeof(int)));
+    CHECKCUDAERR(cudaMalloc(&gpu_md, num * 32));
+    offsets = (int *)malloc(num * sizeof(int));
+    if (!offsets)
+    {
+        printf("Error in allocating CPU offsets!\n");
+    }
 
-    sha3<<<1, batch_size>>>(batch_size, gpu_contexts, gpu_in, gpu_inlen, gpu_offset, gpu_md, 32);
-
-	CHECKCUDAERR(cudaMemcpy(out, gpu_md, batch_size * 32, cudaMemcpyDeviceToHost));
-     
-    return (unsigned char*) out;
+    out = (char *)malloc(num * 32);
+    if (!offsets)
+    {
+        printf("Error in allocating CPU output!\n");
+    }
 }
 
-void free_gpu_keccak() {
-	cudaFree(gpu_contexts);
-	cudaFree(gpu_in);
-	cudaFree(gpu_inlen);
-	cudaFree(gpu_offset);
-	cudaFree(gpu_md);
-	free(offsets);
-	free(out);
+unsigned char *run_keccak(int batch_size, unsigned char *messages, int *message_lengths)
+{
+    // v1: variable offsets
+    // int sum = message_lengths[0];
+    // offsets[0] = 0;
+    // for (int i = 1; i < batch_size; i++) {
+    // 	offsets[i] = sum;
+    // 	sum += message_lengths[i];
+    // }
+
+    // v2: alligned at 1024 bytes
+    for (int i = 0; i < batch_size; i++)
+    {
+        offsets[i] = i * 1024;
+    }
+    int sum = 1024 * batch_size;
+
+    CHECKCUDAERR(cudaMemcpy(gpu_in, messages, sum, cudaMemcpyHostToDevice));
+    CHECKCUDAERR(cudaMemcpy(gpu_inlen, message_lengths, batch_size * sizeof(int), cudaMemcpyHostToDevice));
+    CHECKCUDAERR(cudaMemcpy(gpu_offset, offsets, batch_size * sizeof(int), cudaMemcpyHostToDevice));
+
+    // sha3<<<1, batch_size>>>(batch_size, gpu_contexts, gpu_in, gpu_inlen, gpu_offset, gpu_md, 32);
+    sha3<<<batch_size / TPB, TPB>>>(batch_size, gpu_contexts, gpu_in, gpu_inlen, gpu_offset, gpu_md, 32);
+
+    CHECKCUDAERR(cudaMemcpy(out, gpu_md, batch_size * 32, cudaMemcpyDeviceToHost));
+
+    return (unsigned char *)out;
+}
+
+void free_gpu_keccak()
+{
+    cudaFree(gpu_contexts);
+    cudaFree(gpu_in);
+    cudaFree(gpu_inlen);
+    cudaFree(gpu_offset);
+    cudaFree(gpu_md);
+    free(offsets);
+    free(out);
 }

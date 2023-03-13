@@ -23,6 +23,8 @@ import "C"
 
 import (
 	// "encoding/hex"
+
+	"encoding/hex"
 	"fmt"
 	"hash"
 	"os"
@@ -47,7 +49,7 @@ type Pair struct {
 
 var (
 	dataRun       = kingpin.Flag("run-path", "Path of YCSB operation data").Required().String()
-	keyFilePrefix = kingpin.Flag("key-file", "Prefix of key files").Required().String()	
+	keyFilePrefix = kingpin.Flag("key-file", "Prefix of key files").Required().String()
 	saveResults   = kingpin.Flag("save", "Save digests to output-cpu.txt").Bool()
 )
 
@@ -101,8 +103,8 @@ func main() {
 		defer close(runBuf)
 		if err := benchmark.LineByLine(runFile, func(line string) error {
 			reqNum.Add(1)
-			operands := strings.SplitN(line, " ", 5)			
-			buf := make([]byte, len(operands[3]))		// operands[3] is the value
+			operands := strings.SplitN(line, " ", 5)
+			buf := make([]byte, len(operands[3])) // operands[3] is the value
 			copy(buf, operands[3])
 			msg := myKeccak256(buf)
 			sig, err := secp256k1.Sign(msg, privkey)
@@ -118,64 +120,91 @@ func main() {
 	time.Sleep(5 * time.Second)
 
 	// init GPU - batch 128
-	batch := 8192	
+	batch := 1024
 	cbatch := C.int(batch)
 	C.init_gpu(cbatch)
-	pkeys := make([]byte, 64 * batch)
-	signatures := make([]byte, 64 * batch)
-	messages := make([]byte, 1024 * batch)
+	pkeys := make([]byte, 64*batch)
+	signatures := make([]byte, 64*batch)
+	messages := make([]byte, 1024*batch)
 	lengths := make([]C.int, batch)
 	idx := 0
 	nreq := 0
 
-
 	fmt.Println("Start running ...")
 	if *saveResults {
-		outFile, err := os.Create("output-cpu.txt")
+		outFile, err := os.Create("output-gpu.txt")
 		if err != nil {
 			fmt.Printf("Error creating output file: %v\n", err)
 		}
-		// TODO
-		/*
+
+		valid := true
+		ninvalid := 0
 		for pair := range runBuf {
-
-			// TODO
-
-			outFile.WriteString(string(pair.a) + "\n")
-			outFile.WriteString(hex.EncodeToString(dig) + " " + hex.EncodeToString(pair.b[:64]) + " " + res + "\n")
-			// outFile.WriteString(hex.EncodeToString(dig) + " " + res + "\n")
+			copy(pkeys[idx*64:(idx+1)*64], pubkey[1:])
+			copy(signatures[idx*64:(idx+1)*64], pair.b[:64])
+			copy(messages[idx*1024:(idx+1)*1024], pair.a)
+			lengths[idx] = C.int(len(pair.a))
+			idx++
+			if idx == batch {
+				pkptr := (*C.uchar)(unsafe.Pointer(&pkeys[0]))
+				mptr := (*C.uchar)(unsafe.Pointer(&messages[0]))
+				sptr := (*C.uchar)(unsafe.Pointer(&signatures[0]))
+				lptr := (*C.int)(unsafe.Pointer(&lengths[0]))
+				res := C.GoBytes(unsafe.Pointer(C.run_keccak_secp256k1(cbatch, pkptr, sptr, mptr, lptr)), cbatch)
+				for j := 0; j < batch; j++ {
+					if res[j] != 1 {
+						valid = false
+						ninvalid++
+					}
+					outFile.WriteString(string(messages[j*1024:(j+1)*1024]) + "\n")
+					// outFile.WriteString(hex.EncodeToString(signatures[j*64:(j+1)*64]) + " " + string(res[j]) + "\n")
+					outFile.WriteString(hex.EncodeToString(signatures[j*64:(j+1)*64]) + "\n")
+				}
+				// Test Keccak only
+				/*
+					res := C.GoBytes(unsafe.Pointer(C.run_keccak(cbatch, mptr, lptr)), 32*cbatch)
+					for j := 0; j < batch; j++ {
+						outFile.WriteString(hex.EncodeToString(res[j*32:(j+1)*32]) + "\n")
+					}
+				*/
+				idx = 0
+				nreq += batch
+			}
 		}
-		*/
+		if !valid {
+			fmt.Printf("%d results are not valid!\n", ninvalid)
+		}
+
 		outFile.Close()
 	} else {
 		latency := 0.0
 		batches := 0
 		start := time.Now()
-		
+
 		for pair := range runBuf {
-		copy(pkeys[idx*64:(idx+1)*64], pubkey[1:])
-		copy(signatures[idx*64:(idx+1)*64], pair.b[:64])
-		copy(messages[idx*1024:(idx+1)*1024], pair.a)
-		lengths[idx] = C.int(len(pair.a))
-		idx++
-		if idx == batch {
-			pkptr := (*C.uchar)(unsafe.Pointer(&pkeys[0]))
-			mptr := (*C.uchar)(unsafe.Pointer(&messages[0]))
-			sptr := (*C.uchar)(unsafe.Pointer(&signatures[0]))
-			lptr := (*C.int)(unsafe.Pointer(&lengths[0]))
-			start1 := time.Now()
-			C.run_keccak_secp256k1(cbatch, pkptr, sptr, mptr, lptr)
-			latency += time.Since(start1).Seconds()
-			batches++
-			idx = 0
-			nreq += batch
+			copy(pkeys[idx*64:(idx+1)*64], pubkey[1:])
+			copy(signatures[idx*64:(idx+1)*64], pair.b[:64])
+			copy(messages[idx*1024:(idx+1)*1024], pair.a)
+			lengths[idx] = C.int(len(pair.a))
+			idx++
+			if idx == batch {
+				pkptr := (*C.uchar)(unsafe.Pointer(&pkeys[0]))
+				mptr := (*C.uchar)(unsafe.Pointer(&messages[0]))
+				sptr := (*C.uchar)(unsafe.Pointer(&signatures[0]))
+				lptr := (*C.int)(unsafe.Pointer(&lengths[0]))
+				start1 := time.Now()
+				C.run_keccak_secp256k1(cbatch, pkptr, sptr, mptr, lptr)
+				latency += time.Since(start1).Seconds()
+				batches++
+				idx = 0
+				nreq += batch
+			}
 		}
-	}
 
 		delta := time.Since(start).Seconds()
 		fmt.Printf("Throughput on GPU to handle %v requests: %v req/s\n",
 			nreq, int64(float64(nreq)/delta),
 		)
-		fmt.Printf("Latency per batch: %v s\n", latency/float64(batches));
+		fmt.Printf("Latency per batch: %v s\n", latency/float64(batches))
 	}
 }

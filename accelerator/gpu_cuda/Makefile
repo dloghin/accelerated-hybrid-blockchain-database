@@ -14,5 +14,7 @@ libacc-gpu.so: kernel_secp256k1.cu kernel_sha3.cu
 # Debug
 # $(NVCC) -I$$HOME/git/CGBN/include -arch=sm_50 -lineinfo $^ -o $@ -lgmp
 
+lib: libacc-gpu.so
+
 clean:
 	rm -f kernel-cpu
